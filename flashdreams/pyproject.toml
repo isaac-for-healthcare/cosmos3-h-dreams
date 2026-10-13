@@ -1,0 +1,218 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flashdreams"
+dynamic = ["version"]
+description = "High-performance streaming video diffusion framework with pluggable model backends"
+readme = "PYPI_README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "boto3>=1.35",
+    "botocore>=1.35",
+    "einops>=0.7",
+    "filelock>=3",
+    "ftfy>=6.0",
+    "huggingface-hub>=0.33",
+    "loguru>=0.7",
+    # MediaPy 1.2.6 subclasses numpy.typing.NDArray, which became a
+    # non-subclassable TypeAliasType in NumPy 2.5 (notably on Python 3.13).
+    "numpy>=1.24,<2.5",
+    "nvidia-ml-py>=12.0",
+    "psutil>=7.0",
+    "pyyaml>=6.0",
+    "safetensors>=0.4",
+    "tqdm>=4.60",
+    "transformers>=5.17,<6",
+    # Security floor for botocore/requests transitive use.
+    "urllib3>=2.7.0",
+    # tyro powers the ``flashdreams-run`` console script (subcommand
+    # union over the integration registry, per-field CLI overrides), so it
+    # has to ship as a runtime dependency, not a dev-only one.
+    # 1.0 introduced ``sort_subcommands`` in
+    # ``tyro.extras.subcommand_type_from_defaults``, used by the CLI union.
+    "tyro>=1.0",
+
+    # Minimum is 2.9: context_parallel(buffers=, buffer_seq_dims=,
+    # no_restore_buffers=) and set_rotate_method in
+    # torch.distributed.tensor.experimental require PyTorch 2.9+.
+    "torch>=2.9",
+    # ``torch.compile`` lowers conv/elementwise kernels through Inductor +
+    # Triton. On Windows the upstream PyPI ``triton`` package is Linux-only,
+    # so without ``triton-windows`` Inductor crashes deep inside its
+    # template heuristics with ``TypeError: object() takes no arguments``.
+    # The maintainers ship a Windows-compatible drop-in under the
+    # ``triton-windows`` package; pulling it on win32 keeps every
+    # ``use_compile=True`` config path (encoder, decoder, DiT) working
+    # the same way it does on Linux. This is scoped to the workspace
+    # member that owns the ``use_compile`` knob.
+    "triton-windows>=3.5.0; sys_platform == 'win32'",
+]
+
+[project.scripts]
+# Unified CLI over every registered integration (in-tree + plugin-discovered).
+# Mirrors nerfstudio's ``ns-train`` console script shape (one hyphenated
+# binary, tyro union over runners as direct subcommands).
+flashdreams-run = "flashdreams.scripts.cli:entrypoint"
+# The same idea on the v2 API, kept separate while both exist: v2 applications
+# implement a different contract, so one binary could not resolve both.
+flashdreams-run-v2 = "flashdreams.runtime_v2.cli:entrypoint"
+flashdreams-benchmark = "tools.benchmarks.cli:main"
+
+[project.entry-points."flashdreams.postprocess_presets"]
+"rtx-super-resolution" = "flashdreams.infra.postprocess:POSTPROCESS_PRESET_RTX_SUPER_RESOLUTION"
+"rtx-super-resolution-ultra" = "flashdreams.infra.postprocess:POSTPROCESS_PRESET_RTX_SUPER_RESOLUTION_ULTRA"
+"rtx-deblur-ultra" = "flashdreams.infra.postprocess:POSTPROCESS_PRESET_RTX_DEBLUR_ULTRA"
+
+[project.urls]
+Homepage = "https://github.com/NVIDIA/flashdreams"
+Repository = "https://github.com/NVIDIA/flashdreams"
+"Bug Tracker" = "https://github.com/NVIDIA/flashdreams/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mediapy>=1.1",
+    # 2.0 rewrote the plugin for pytest 8+ (older versions use the removed
+    # ``Item.get_marker`` API).
+    "pytest-manual-marker>=2.0",
+    "tomli>=2.0",
+    # Transformer Engine is the parity / perf reference for the in-house
+    # RoPE Triton kernel (see `tests/test_rope_kernel.py` and
+    # `tests/perf_rope.py`). No runtime code imports it; gated on Linux
+    # because there are no Windows wheels. The `core-cu13` extra ships a
+    # pre-built CUDA 13 binary; combining it with `--group cuda12` (cu128
+    # torch) produces an unrunnable environment, so `dev` is declared as
+    # a `conflicts` peer of `cuda12` in `tool.uv.conflicts` below.
+    "transformer-engine[pytorch,core-cu13]>=2.12; sys_platform != 'win32'",
+]
+# Legacy alias kept around so the lock file resolves identically to
+# main; the canonical extra is ``runners`` (same package set).
+examples = [
+    "mediapy>=1.1",
+    "opencv-python-headless>=4.5",
+    "scipy>=1.11",
+]
+# I/O dependencies the ``flashdreams-run`` CLI runners lazy-import
+# (image decoding for I2V first-frames, MP4 muxing for outputs). Kept
+# off the core install so a serving deployment that uses the bare
+# pipeline (e.g. ``integrations_v2/lingbot``) doesn't pull in ffmpeg / opencv.
+runners = [
+    "mediapy>=1.1",
+    "opencv-python-headless>=4.5",
+    "scipy>=1.11",
+]
+local-window = [
+    # Immediate Dear ImGui bindings used by ImGuiUILoop. SlangPy supplies the
+    # Vulkan renderer and CUDA-interoperable textures.
+    "imgui-bundle==1.92.801",
+    "slangpy==0.42.0",
+]
+
+# Optional NVIDIA VFX runtime used only by the RTX postprocess presets.
+# Kept out of the default install because it is proprietary and requires
+# supported NVIDIA RTX hardware.
+rtx-postprocess = [
+    "nvidia-vfx==0.1.0.1",
+]
+serving = [
+    "aiohttp>=3.14.3",
+    "aiortc>=1.9",
+]
+
+[tool.setuptools.dynamic]
+# Resolve version from _version.py (not __init__.py) so setuptools never
+# imports the full package at build time -- avoids triggering transitive
+# imports of heavy dependencies like torch / transformer-engine.
+version = {attr = "flashdreams._version.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["flashdreams*", "tools*"]
+exclude = ["tests", "flashdreams._pytest_plugins*"]
+
+[tool.setuptools.package-data]
+"flashdreams.serving.webrtc" = ["web/*.html", "web/*.css", "web/*.js", "web/assets/*.svg"]
+"flashdreams.runtime_v2.serving" = ["web/*.html", "web/*.js"]
+
+[dependency-groups]
+# Default CUDA 13 profile. No source binding -- Linux falls through to
+# PyPI's CUDA-13 manylinux wheel, Windows is captured by the unconditional
+# cu130 binding below. The group exists primarily as a `conflicts` peer of
+# `cuda12`: without that partition uv rejects the mixed cu128 + cu130
+# sources as "conflicting indexes in all marker environments", even when
+# their `sys_platform` markers are disjoint.
+cuda13 = [
+    "torch>=2.9",
+    "torchvision>=0.24",
+]
+# CUDA 12.8 opt-in (Linux only -- on Windows the cu130 binding wins). The
+# `sys_platform != 'win32'` marker on the cu128 binding below is what
+# physically partitions the two source domains.
+cuda12 = [
+    "torch>=2.9",
+    "torchvision>=0.24",
+]
+
+# Per-CUDA-flavor PyTorch indexes. `explicit=true` means they're only
+# consulted for packages whose `tool.uv.sources` entry binds to them.
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+# The cu130 binding is intentionally group-free: uv's `default-groups`
+# does not propagate per-group source bindings, so a group-gated cu130
+# binding would not fire on plain `uv sync` on Windows.
+torch = [
+    { index = "pytorch-cu128", group = "cuda12", marker = "sys_platform != 'win32'" },
+    { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
+]
+torchvision = [
+    { index = "pytorch-cu128", group = "cuda12", marker = "sys_platform != 'win32'" },
+    { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
+]
+
+[tool.uv]
+managed = true
+# `cuda13` is the default; `cuda12` is mutually exclusive and uv
+# auto-deactivates `cuda13` when `--group cuda12` is passed.
+default-groups = ["cuda13"]
+# `cuda13` ⊥ `cuda12` partitions the torch source bindings. The `dev`
+# extra is also declared incompatible with `cuda12` because it pulls
+# `transformer-engine[core-cu13]`, whose pre-built cu13 binary cannot be
+# paired with the cu12 torch wheels (transformer-engine-torch itself
+# depends on transformer-engine-cu13 unconditionally on Linux, so a
+# cu12-only TE install is not expressible via PyPI extras).
+conflicts = [
+    [
+        { package = "flashdreams", group = "cuda13" },
+        { package = "flashdreams", group = "cuda12" },
+    ],
+    [
+        { package = "flashdreams", extra = "dev" },
+        { package = "flashdreams", group = "cuda12" },
+    ],
+]

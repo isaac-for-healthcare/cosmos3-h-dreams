@@ -1,0 +1,373 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
+The machinery that runs a v2 application: it finds one, asks it for a session,
+runs that session's two loops on two threads, and delivers what they generate to
+a file or a browser.
+
+This is the implementation. For how the pieces fit together and why the seams are
+where they are, read [ARCHITECTURE.md](../../../ARCHITECTURE.md) first; for the
+protocols an application implements, see [`api_v2`](../api_v2/README.md).
+
+## Terminology
+
+| Term | Meaning |
+| --- | --- |
+| **Latent frame** | One temporal slice in the model's latent representation. It is not yet an RGB or RGBA image; decoding may produce one or more model frames from it. |
+| **AR step** or **AR chunk** | One autoregressive model iteration and the group of latent frames it produces. A chunk commonly contains four or eight latent frames, but the size is integration-specific. |
+| **Model frame** | One decoded RGB or RGBA image produced by the model, before UI composition. A model step may return several model frames together. |
+| **Frame** or **presented frame** | One model frame after the UI loop has composited its widgets or overlays. This is the frame written to a client window or output sink. |
+
+## What is in here
+
+Finding and starting an application:
+
+- `application_registry.py` reads the `flashdreams.applications_v2` entry points
+  to turn a slug into an `IApplication`, falling back to importing the slug as a
+  module name.
+- `cli.py` is `flashdreams-run-v2`: it splits its own arguments from the
+  application's at `--`, decides which session to ask for, and builds the window.
+- `application_runner.py` owns the application lifecycle around one run —
+  `init`, `create_session`, `run_session`, `close`.
+- `client_window_factory.py` turns `--mode` into a window, and owns the
+  arguments each mode takes.
+
+Running a session:
+
+- `session_runner.py` is `run_session`, which everything above ends up calling.
+  It is the only place that starts a generation thread; the WebRTC server and
+  the video encoder run threads of their own, but neither touches a loop.
+- `event_buffer.py` holds client input until both loops have read it.
+- `presentation_manager.py` buffers generated frames between the two threads and
+  decides which one the UI sees.
+- `session_desc.py` describes the session being run: frame size, rates, layout,
+  and the two policy knobs below.
+- `step_result.py` is what one generation step produces.
+- `coordination.py` broadcasts rank zero's continue/reset/stop decisions over a
+  separate CPU process group for distributed model loops.
+
+Presenting it:
+
+- `blit_model_output_to_screen_loop.py` is the UI loop a session gets when it
+  registers none of its own.
+- `slangpy_ui_loop.py` and `slangpy_ui_renderer.py` provide retained SlangPy
+  widgets over the model output. `imgui_ui_loop.py` and `imgui_ui_renderer.py`
+  provide immediate Dear ImGui controls rendered through SlangPy.
+- `mp4_client_window.py` and `webrtc_client_window.py` are the two windows.
+- `mp4_output_sink.py`, `metrics_output_sink.py`, `video_encoder.py` and
+  `video_tensor.py` are what output is written through.
+- `serving/` is the HTTP and WebRTC server behind the browser window.
+
+Input:
+
+- `user_input_event.py` defines the concrete event types, `user_input_events.py` the
+  batch of them a source hands over.
+- `input_timeline.py` advances modality-neutral, fixed-rate input windows and
+  catches a stale model clock up to newly accepted input.
+- `keyboard_input.py` buffers keyboard edges independently of that clock and
+  projects held state over each selected window. Other modalities should reuse
+  the window clock with their own semantics: held state for mouse buttons,
+  coalesced position for pointer motion, and accumulated impulses for wheels.
+
+## Tensor × context inference
+
+`flashdreams.core.distributed.parallel.init_parallel(head_groups=...)` creates
+a tensor × context mesh from the launcher world, or reuses an initialized
+process group. An integration can select TP through its own configuration:
+
+```python
+init_parallel(
+    tensor_parallel=config.parallel.tensor_parallel,
+    head_groups=model_head_groups,
+)
+```
+
+Core validates the TP degree and derives `cp_size = world_size // tp_size`;
+there is no separate CP setting. Missing or `None` TP uses `plan_mesh()`'s
+TP-first fallback: `gcd(world_size, head_groups)`, which may leave `cp_size=1`.
+Choose TP explicitly when the integration requires CP. `tensor_parallel=1`
+maximizes CP; `tensor_parallel=world_size` gives pure TP when model-compatible.
+The integration validates projection/checkpoint shapes, at least `cp_size`
+partitionable views/tokens per CP pass, and output order. Prefer the smallest TP
+that meets model memory/performance needs, keeping TP within a node when possible.
+Tensor groups contain consecutive ranks; context groups stride by tensor size.
+TP shards weights; CP shards views/tokens and replicates each TP weight shard
+across its CP group. With `tp_size=1`, every CP rank holds the full model weights.
+
+Both axes use NCCL for CUDA or Gloo for CPU, regardless of the reused world's
+backend; all ranks must agree on the device type. The caller still owns the
+world's lifecycle. The shared shutdown helper's immediate-exit path for
+compiled CUDA-graph workloads requires an NCCL **world**, not only NCCL axes;
+a mixed Gloo-world/NCCL-axis launch still needs launcher/job timeouts around
+ordinary process-group teardown.
+
+`core.distributed.tensor_parallel` provides `ColumnParallelLinear` and
+`RowParallelLinear`. The integration selects the projections and head ranges;
+the core layers slice weights and sum row-sharded outputs. Keep a row bias on
+exactly one tensor rank. Shard after loading and before moving weights to CUDA.
+
+`core.distributed.context_parallel` provides `build_shard`, `gather_tokens`,
+and `local_query_range` for uneven token counts. Existing equal-sized
+`split_inputs_cp` and `cat_outputs_cp` callers retain their contracts.
+
+Expose the mesh through `ISession.parallel_context`; it must be available
+before `session.init`. `run_session` owns the application control plane through
+`StepAgreement`: admission, input, session results, and shutdown over a separate
+Gloo control group. The model loop consumes only a private structural hook for
+admission and input. `ParallelContext` and integration-owned TP/CP collectives
+and output gathering form the inference data plane, normally over NCCL.
+Model hooks stay local: `is_finished` reports completion,
+`reset` discards model state, and `close` releases resources. They do not
+broadcast lifecycle decisions or perform cleanup barriers.
+
+Only rank zero creates a window or metrics sink. Programmatic worker calls
+pass `None` as the window; the CLI selects this from the launcher rank.
+Every admitted rank executes the same step and ordered model collectives.
+Before rank zero returns non-empty results, the integration must gather all CP
+shards needed for publication in their original order. Workers return `[]` only
+after every required collective, including gathers. Gather before decoding when
+it needs the complete latent/view sequence; decoding may run only on rank zero
+when the model permits it. Already-replicated TP results need no extra gather.
+The runtime does not gather `StepResult` objects; it cannot infer their sharded
+axis, ordering, padding, or replication.
+
+Before each step the runtime checks cancellation, broadcasts rank zero's
+input batch and reset generation, then checks preparation and cancellation
+again. Admission commits every rank to the step; a later UI stop is handled
+at the following boundary. Input events must be pickleable and come from
+trusted ranks in the same job. After model threads stop, calling threads poll
+rank zero's continue, terminal, or replacement result once per UI tick. Workers
+therefore remain coordinated while an unfinished UI stays open, without treating
+idle user time as a missing rank. Failed ranks bypass result polling; cleanup
+performs no collective that could hide the original failure.
+
+Control waits have a five-minute timeout. A process supervisor such as
+`torchrun` must terminate peers after a rank exits with an error; a Slurm
+time limit bounds kernel or process failures that cannot unwind. See
+[ARCHITECTURE.md](../../../ARCHITECTURE.md#many-gpu-sessions) for the process
+and thread model, and `tests/test_step_agreement.py` for fault-injection checks.
+
+The v2 CLI synchronizes and releases the default process group after a clean
+run; on failure it lets the process supervisor terminate blocked peers.
+
+## The command line
+
+`flashdreams-run-v2 SLUG` finds an application through the
+`flashdreams.applications_v2` entry point group and runs it with
+`ApplicationRunner`. Arguments after `--` go to the application, so
+`flashdreams-run-v2 SLUG -- --help` describes the application rather than this
+command. The split is stated rather than guessed because an application may
+declare arguments this command also has.
+
+`--mode` picks where the run goes, and each mode owns its own arguments in
+`client_window_factory.py`:
+
+| Mode | Takes | Input | Ends when |
+| --- | --- | --- | --- |
+| `mp4` (default) | `--output-path` | none | the application UI finishes |
+| `webrtc` | `--host`, `--port` | keyboard, mouse, focus, query string, reset, close | the application UI finishes or the client closes it |
+
+`--host` and `--port` choose the listener. When a browser connects with a
+non-empty query string, an `ILoop` receives a `QueryStringUserInputEvent` whose
+value is the raw string without the leading `?`.
+
+These override whatever session the application asked for:
+
+| Argument | Sets |
+| --- | --- |
+| `--pixel-width`, `--pixel-height` | Frame size to generate. |
+| `--fps` | `frames_per_second_for_step`, which is also the rate an MP4 plays back at. |
+| `--layout` | Tensor layout to generate results in. |
+| `--backpressure-mode` | What the model thread does when the presentation queue is full. |
+| `--presentation-mode` | Whether the UI runs continuously or only for newly selected model frames. |
+
+Each defaults to asking for nothing, so a run that names none of them gets what
+the application generates. There is no argument for the UI tick rate, and none
+for `run_session`'s `steps` limit — a caller that needs to bound a run by steps
+drives the runtime from Python.
+
+`--timeout SECONDS` bounds the whole application run, including initialization
+and replacement sessions. At the deadline the UI thread signals the session's
+loops to stop and performs their normal cleanup. An in-flight model step must
+return before the process can finish cleaning up. Synchronous application or
+session initialization likewise cannot be interrupted mid-call.
+
+Local and single-rank replacements are skipped if cleanup reaches the deadline.
+A multi-rank replacement result already synchronized by the old session is authoritative:
+every rank creates that replacement even if the deadline crosses during cleanup,
+then the new session receives zero remaining time and stops at its first boundary.
+
+`--stats-path` adds a `MetricsOutputSink`. It receives the **model** loop's
+results as they are published, not the UI loop's output, so a benchmark measures
+what the model generated while the window still sees one composited frame per
+tick. See [`configs/v2_model_benchmarks.json`](../../../configs/v2_model_benchmarks.json)
+and the [benchmark README](../../tools/benchmarks/README.md) for the suite.
+The runtime augments those model records with step wall time and
+presentation-queue depth/publish-wait measurements under the reserved
+`runtime_` metric prefix. UI and window timings are not folded into a later
+model record because they describe a different frame.
+
+`--stats-path` also sets `FLASHDREAMS_SYNC_AND_PROFILE=1` before constructing the
+application, enabling synchronized per-stage pipeline profiling for the run.
+
+## Starting and stopping a run
+
+`ApplicationRunner.run` calls `init`, `create_session` and `run_session` in
+order, and closes the application on the way out whether or not the run
+succeeded. It also closes the window itself when the run never started, because
+`run_session` is what otherwise owns the window, and a WebRTC window may already
+be serving a browser before the application has finished loading.
+
+`run_session` then opens the window and any metrics sink, collects one batch of
+input, presents one tick, and only then starts the model thread — so a client that
+closed during startup is never generated for. Its main loop services input and
+presents frames until the shutdown event is set, or until the model thread has
+finished and no frames are still pending.
+
+On the way out it sets the shutdown event, joins the model thread, shuts both
+loops down, clears the presentation buffer, unregisters the readers, closes every
+sink it opened, and closes the session. Then it raises a loop's failure if one
+was queued, otherwise its own, otherwise the first cleanup failure, logging the
+rest.
+
+## `EventBuffer`
+
+Input arrives once per tick on the UI thread and is appended here. The buffer
+keeps a flat list plus a cursor per registered reader: `read` returns everything
+that reader has not seen and moves its cursor to the end, and
+`collect_garbage` deletes the prefix every reader has passed. The UI loop is
+reader 0 and the model loop is reader 1.
+
+Appending also counts resets. Every `ResetUserInputEvent` in a batch bumps
+the generation number that loops and the presentation manager compare against
+their own.
+
+A close event is handled twice over, deliberately: `run_session` sets the
+shutdown event when it sees one in a collected batch, and `ILoop._begin_run` sets
+it again when a loop reads one. Either path alone would end the run; both means
+neither thread waits on the other to notice.
+
+## `PresentationManager`
+
+The model thread publishes a list of channels per step into a bounded chunk
+queue. The queue holds one pending chunk by default. Once the UI thread takes
+that chunk, its remaining frames live in the active presented chunk rather than
+the queue; an empty queue with an active chunk means presentation is keeping up.
+
+`publish` observes complete model-step timing for cadence, including any
+post-processing performed inside the step. The UI thread calls `advance` once
+per tick so the manager can decide whether the next presentable model frame is
+due. A full pending queue applies the configured backpressure policy without
+bypassing frame pacing.
+
+When CUDA is available, the default `PresentationManager` creates a stream at
+the device's highest available priority. `run_session` keeps that one stream
+current for the entire UI-thread lifecycle, including session and window
+initialization, input collection, UI rendering, window writes, and cleanup.
+Constructing the manager with an explicit CPU device disables the CUDA stream.
+Stream priority lets short UI work overtake queued lower-priority kernels, but
+does not preempt a kernel that is already executing.
+
+Publishing an empty list queues nothing and waits for nothing — a step that
+presented nothing, which is what a worker process of a sharded multi-process run
+returns. See `api_v2/README.md` for the model loop's side of that.
+
+Frame cadence initially uses `frames_per_second_for_step`, then follows the
+throughput of complete model steps over the trailing two seconds. The estimate
+uses time spent inside model steps, so presentation-queue backpressure cannot
+feed back into a progressively slower cadence. A late UI tick reanchors the next
+deadline; it never drains multiple model frames into back-to-back writes in one
+tick.
+
+`SessionDesc.backpressure_mode` decides what publishing does when the queue is
+full:
+
+- `BLOCK` waits for room, in `put_timeout` slices so a shutdown is still
+  noticed. Every generated frame survives, and the model thread is held back to
+  the rate the UI can consume.
+- `DROP_OLDEST` evicts queued work so the UI can catch up to the newest output,
+  trading frames for latency.
+
+`SessionDesc.presentation_mode` decides what the UI does when no new frame is
+ready:
+
+- `CONTINUOUS` runs the UI loop every tick while inference is active,
+  re-presenting the newest model frame when necessary.
+- `ON_DEMAND` runs the UI loop only when `advance` moves to a new model frame.
+
+While inference has not started or has finished, an unfinished UI runs every
+tick in either mode. The model loop owns `inference_state`; the UI can query it
+through `model_inference_state`. The UI remains active after model output drains
+and may use `is_finished` to declare its own terminal condition.
+
+For output that has to be compared frame by frame, use `BLOCK` with
+`ON_DEMAND`: together they keep every frame in the presentation manager
+and present each exactly once in order. Chunks that could not be kept are counted
+in `dropped_for_space` and `discarded_at_reset`, and logged when the run ends.
+Both counters use model chunks as their unit.
+
+## Presenting and writing
+
+A UI loop reads model frames through `presented_model_frame` and
+`presented_model_frames`, composites whatever it wants, and returns a list
+holding that one frame, or `[]` to present nothing. `run_session` writes
+the single frame to the window.
+
+The ImGui and SlangPy UI loops prepare the optional model back buffer before
+composition: integer `[0, 255]` frames are normalized to the renderer's
+floating-point range, frames are moved to the renderer's device, and dimensions
+are resized to the rendered overlay. `PresentationManager.composite` then
+enforces matching dimensions and device instead of silently repairing them.
+
+The default UI loop, `BlitModelOutputToScreenLoop`, composites every model
+channel in list order as if they were image layers and reshapes the result into
+the session's layout.
+
+`SlangPyUILoop` is the alternative for SlangPy's retained
+widget subset. `ImGuiUILoop` exposes the complete ImGui API. Both produce a
+`[1, C, H, W]` frame inside that one-element list, so an `ISession` using
+either should declare a `tchw` output layout.
+
+`IClientWindow` is both an `InputSource` and an `OutputSink`, so a window is
+written to with the same three calls as any sink: `open` with the session
+description, `write` per result, `close` at the end. Both windows are thin
+delegates over the thing that does the work — `Mp4ClientWindow` over
+`Mp4OutputSink`, `WebRTCClientWindow` over `WebRTCServer` — and neither describes
+the output shape, because the session already did.
+
+They differ in what they can do rather than in how they are driven. A session
+chooses its UI independently of the client window. Browser keyboard, mouse and
+focus events arrive on the server's own thread, so it queues them and hands them
+over in batches when the session asks.
+
+A UI loop may call `request_new_session(session_desc)` during its step with a
+fully resolved replacement description. `run_session` stops and cleans the
+current session, leaves the interactive window open, and returns that
+description unchanged. `ApplicationRunner` creates the replacement from it. A
+WebRTC browser disconnect releases only its peer connection, so refreshing the
+page does not stop the session, server, or application.
+
+The UI thread owns WebRTC cadence. Each `write` synchronously materializes one
+owned video frame and admits it to a two-frame FIFO of unsent frames. The WebRTC
+track returns queued frames to aiortc immediately: it neither sleeps to pace
+them nor repeats the latest frame. If network or encoder congestion fills the
+FIFO, the next write replaces only its oldest unsent frame; a frame already
+handed to aiortc is never overwritten.
+
+When a replacement session reopens the WebRTC window, it keeps the existing
+peer connection and discards frames still queued from the previous session. A
+replacement must keep the negotiated layout, frame rates, width, and height.
+
+What a sink expects of the pixel values it is handed is part of the result
+contract, in [`api_v2`](../api_v2/README.md#what-a-step-returns).
+
+## Adding a mode
+
+A mode is one way to watch a run. Subclass `ClientWindowMode` in
+`client_window_factory.py`, declare the arguments only it takes, and add it to
+`_MODES`; a command line offering the modes never has to know what any of them
+are. `check_arguments` is called while the command can still print usage, and
+`starting` and `finished` are what it prints — which is how a WebRTC run reports
+a URL nobody could have guessed when the port was chosen by the operating system.

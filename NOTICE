@@ -1,0 +1,12 @@
+NVIDIA Cosmos3-H-Dreams
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+Includes the NVIDIA FlashDreams framework.
+
+This product is licensed under the Apache License, Version 2.0;
+the full license text is reproduced in LICENSE at the repository root
+and in LICENSES/Apache-2.0.txt.
+
+See THIRD-PARTY-NOTICES at the repository root for third-party software
+attributions and license information for runtime dependencies and selected
+optional and development components.

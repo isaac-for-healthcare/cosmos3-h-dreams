@@ -1,0 +1,96 @@
+[tool.uv.workspace]
+members = [
+    "flashdreams",
+    "cosmos_h_dreams",
+]
+
+# Override nvidia-cublas to >=13.4 because transformer-engine-cu13 2.14.0 was
+# compiled against cuBLAS 13.4.x, while torch 2.11 pins nvidia-cublas 13.1.0.3.
+# cuBLAS 13.4 is backwards compatible with 13.1.
+[tool.uv]
+managed = true
+required-version = ">=0.11.8"
+override-dependencies = [
+    "nvidia-cublas>=13.4",
+    # Temporary cap for mediapy 1.2.6: numpy 2.5 makes npt.NDArray a PEP 695
+    # TypeAliasType that mediapy subclasses during import.
+    # https://github.com/NVIDIA/flashdreams/issues/355
+    "numpy>=1.24,<2.5",
+    # Keep transitive HTTP clients off urllib3 versions with sensitive-header
+    # redirect handling vulnerabilities.
+    "urllib3>=2.7.0",
+    # Security floors for transitive async/TLS dependencies.
+    "anyio>=4.14.2",
+    "cryptography>=50.0.0",
+    # Keep protobuf off the 6.33.x line flagged by BDSA for the ParseDict
+    # recursion-depth follow-up. 7.x is outside the published affected range;
+    # use the latest compatible patch to avoid scanner version-map ambiguity.
+    "protobuf>=7.36.2,<8",
+]
+
+# `transformer-engine-torch` has no prebuilt wheel and must be built against
+# the project's PyTorch + system CUDA. uv's default per-package build isolation
+# spins up a clean venv with a fresh CPU-only torch (no numpy, no CUDA), so
+# TE's `parse(torch.version.cuda)` crashes with `TypeError: ... got 'NoneType'`.
+# This is the upstream-acknowledged workaround tracked in
+# https://github.com/NVIDIA/TransformerEngine/issues/1323 — disable isolation
+# so TE builds against the resolved torch from the project venv.
+no-build-isolation-package = ["transformer-engine-torch"]
+
+[tool.pyright]
+exclude = ["flashdreams/flashdreams/accelerated/multi_head_attention/triton/**", "flashdreams/flashdreams/accelerated/quantization/triton.py"]
+ignore = ["flashdreams/flashdreams/accelerated/multi_head_attention/triton/**", "flashdreams/flashdreams/accelerated/quantization/triton.py"]
+extraPaths = [
+    "flashdreams",
+    "cosmos_h_dreams",
+]
+# For pyright to pickup the correct python.
+venvPath = "."
+venv = ".venv"
+# Mirror the ty rule `invalid-method-override = "ignore"` below.
+reportIncompatibleMethodOverride = "none"
+reportIncompatibleVariableOverride = "none"
+
+[tool.ty.environment]
+python-version = "3.12"
+extra-paths = [
+    "flashdreams",
+    "cosmos_h_dreams",
+]
+
+[tool.ty.rules]
+# Intentional pattern: integration subclasses override base methods with more specific
+# signatures (violates Liskov but is the established design in this codebase).
+invalid-method-override = "ignore"
+
+[tool.ty.analysis]
+# These packages have no useful type stubs (Triton kernels rewrite their
+# call signatures via ``@triton.jit``) or are unavailable in CI; treat
+# imports as Any.
+replace-imports-with-any = ["flash_attn.**", "transformer_engine.**", "triton.**"]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib -p flashdreams._pytest_plugins.marker_enforcement"
+markers = [
+    "ci_cpu: CPU-safe test, runs on the CPU CI runner",
+    "ci_gpu: requires GPU or libGL (cv2), runs on the GPU CI runner",
+    "manual: heavy or environment-specific test, opt-in only",
+]
+
+[dependency-groups]
+# Test-specific dependencies shared across workspace members. Listed here so
+# that the type checker (ty) can resolve imports in test files and in
+# flashdreams/_pytest_plugins.
+test = [
+    "pytest>=8.0",
+    "pytest-benchmark>=5.1",
+    "pytest-asyncio>=0.23",
+    "pytest-manual-marker>=2.0",
+    "tomli>=2.0",
+]
+lint = [
+    "pre-commit>=4.3.0",
+    "ruff==0.12.7",
+    "ty>=0.0.39",
+    {include-group = "test"},
+]

@@ -1,0 +1,45 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cosmos3-H-Dreams Viewer</title>
+  <style>
+    :root { color-scheme: dark; font: 18px system-ui, sans-serif; }
+    body { background: #10131a; color: #e6e9ef; margin: 0; padding: 4vw; }
+    main { max-width: 1050px; margin: auto; }
+    button { background: #2f6feb; border: 0; border-radius: 10px; color: white; cursor: pointer; font: inherit; padding: 14px 20px; margin: 0 12px 12px 0; }
+    button:disabled { background: #333b4c; cursor: default; }
+    dialog { width: min(850px, 85vw); max-height: 80vh; overflow: auto; background: #10131a; color: #e6e9ef; border: 1px solid #68758b; border-radius: 12px; }
+    dialog::backdrop { background: rgb(0 0 0 / 70%); }
+    #scene-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    #scene-grid button { margin: 0; padding: 8px; background: #222b3b; border: 2px solid transparent; overflow-wrap: anywhere; }
+    #scene-grid button[aria-pressed="true"] { border-color: #79b8ff; }
+    #scene-grid img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: black; margin-bottom: 8px; }
+    #scene-grid button:disabled { opacity: 0.6; }
+    #video { display: block; width: 100%; max-width: 960px; background: black; margin-top: 16px; }
+    #status { color: #aeb8c8; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cosmos3-H-Dreams Viewer</h1>
+    <p>Live view of the Quest session. The headset controls the simulation.</p>
+    <button id="scene-gallery-button" disabled aria-haspopup="dialog">Scene gallery</button>
+    <dialog id="scene-gallery" aria-labelledby="scene-gallery-title">
+      <h2 id="scene-gallery-title">Scene gallery</h2>
+      <form method="dialog"><button>Close</button></form>
+      <p id="scene-gallery-status" role="status"></p>
+      <div id="scene-grid"></div>
+    </dialog>
+    <p id="scene-status" role="status"></p>
+    <p id="status" role="status">Connecting…</p>
+    <p id="model-status" role="status">Loading model…</p>
+    <video id="video" autoplay muted playsinline></video>
+  </main>
+  <script src="/scenes.js" defer></script>
+  <script src="/viewer.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "description": "Manual local benchmark scenarios targeting about one minute of generated MP4 output for the real LingBot and Omnidreams demos. Runner-backed scenarios can stop early when their input condition clip is shorter than the requested duration.",
+  "scenarios": [
+    {
+      "id": "lingbot-world-fast-taehv-one-minute",
+      "name": "LingBot-World Fast TAEHV one-minute rollout",
+      "description": "Runs the LingBot-World Fast interactive preset for 81 AR blocks. With len_t=3 and 16 fps this targets about 60.6 seconds of MP4 output when the selected pose stream has at least 969 frames.",
+      "report_group": {
+        "id": "lingbot",
+        "name": "LingBot"
+      },
+      "tags": [
+        "manual",
+        "gpu",
+        "real-demo",
+        "lingbot",
+        "i2v",
+        "one-minute"
+      ],
+      "env": {
+        "FLASHDREAMS_SYNC_AND_PROFILE": "1"
+      },
+      "command": [
+        "uv",
+        "run",
+        "--project",
+        "integrations_v2/lingbot",
+        "flashdreams-run",
+        "lingbot-world-fast-taehv-window15-sink3",
+        "mp4",
+        "--scenario.example-data",
+        "true",
+        "--scenario.example-idx",
+        "0",
+        "--scenario.pixel-height",
+        "464",
+        "--scenario.pixel-width",
+        "832",
+        "--scenario.total-blocks",
+        "81",
+        "--output.fps",
+        "16",
+        "--output.path",
+        "{output_dir}/lingbot-world-fast-taehv-one-minute.mp4",
+        "--output.stats-path",
+        "{output_dir}/stats_lingbot_world_fast_taehv_one_minute.json"
+      ],
+      "output_dir_arg": null,
+      "warmup_steps": 6,
+      "requires_runtime_stats": true,
+      "timeout_s": 21600
+    },
+    {
+      "id": "omnidreams-sv-one-minute",
+      "name": "Omnidreams single-view one-minute rollout",
+      "description": "Runs the stable Omnidreams single-view runner for 226 AR blocks with an explicit seed. With chunk2 and 30 fps this targets about 60.2 seconds of MP4 output when the selected HDMap clip is long enough.",
+      "report_group": {
+        "id": "omnidreams",
+        "name": "Omnidreams"
+      },
+      "tags": [
+        "manual",
+        "gpu",
+        "real-demo",
+        "omnidreams",
+        "i2v",
+        "one-minute"
+      ],
+      "env": {
+        "FLASHDREAMS_SYNC_AND_PROFILE": "1",
+        "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"
+      },
+      "command": [
+        "uv",
+        "run",
+        "--project",
+        "integrations_v2/omnidreams",
+        "python",
+        "-m",
+        "tools.benchmarks.strict_run",
+        "--",
+        "omnidreams",
+        "mp4",
+        "--scenario.example-data",
+        "true",
+        "--scenario.example-data-uuid",
+        "239560dc-33d1-11ef-9720-00044bcbccac",
+        "--scenario.total-blocks",
+        "226",
+        "--output.path",
+        "{output_dir}/omnidreams-sv-one-minute.mp4",
+        "--output.stats-path",
+        "{output_dir}/stats_omnidreams_sv_one_minute.json",
+        "--pipeline.diffusion-model.seed",
+        "1"
+      ],
+      "output_dir_arg": null,
+      "warmup_steps": 4,
+      "requires_runtime_stats": true,
+      "timeout_s": 21600
+    }
+  ]
+}

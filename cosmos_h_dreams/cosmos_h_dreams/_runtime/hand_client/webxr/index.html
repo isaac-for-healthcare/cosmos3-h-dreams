@@ -1,0 +1,86 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+The WebXR page the headset loads. Everything is sized for reading at arm's
+length in the Quest browser, and the button keeps the id and label the managed
+launcher clicks through Chrome DevTools.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hand demo controller feed</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        padding: 6vh 6vw;
+        background: #10131a;
+        color: #e6e9ef;
+        font: 500 18px/1.5 system-ui, sans-serif;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0 0 4px;
+      }
+      p {
+        color: #98a2b3;
+        margin: 0 0 24px;
+      }
+      .cta {
+        width: 100%;
+        padding: 28px;
+        font: 600 26px/1 system-ui, sans-serif;
+        color: #fff;
+        background: #2f6feb;
+        border: 0;
+        border-radius: 14px;
+      }
+      .cta:disabled {
+        background: #2a3140;
+        color: #6b7280;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 20px;
+        padding-top: 14px;
+        border-top: 1px solid #232936;
+        color: #98a2b3;
+        font-size: 15px;
+      }
+      .value {
+        color: #e6e9ef;
+      }
+      #log {
+        margin-top: 14px;
+        max-height: 28vh;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        color: #6b7280;
+        font: 400 13px/1.6 ui-monospace, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Hand demo</h1>
+    <p>Enter teleop, pick up both controllers, then press A. Release the triggers, hold still briefly, then match the solid controller outlines to the dashed target shown on the laptop.</p>
+
+    <!-- The id is part of the contract with the managed launcher's DevTools
+         click; renaming it silently breaks automatic entry into WebXR. -->
+    <button id="enter-vr" class="cta" disabled>Start Teleop</button>
+
+    <div class="row"><span>Session</span><span class="value" id="xr-state">checking</span></div>
+    <div class="row"><span>Client</span><span class="value" id="ws-state">connecting</span></div>
+    <div class="row"><span>Frames sent</span><span class="value" id="sent">0</span></div>
+    <div id="log"></div>
+
+    <!-- Cache-busted because the Quest browser otherwise serves a stale copy
+         long after the file on disk has changed. -->
+    <script src="/app.js?v=1"></script>
+  </body>
+</html>

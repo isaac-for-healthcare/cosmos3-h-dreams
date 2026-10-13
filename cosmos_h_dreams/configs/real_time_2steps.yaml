@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Paths are relative to the launch directory. Model weights and timing are shared across scenes.
+runtime:
+  preset: wan-taehv-chunk2-2steps-fademem-compile
+  checkpoint: data_local/checkpoints/model.pt
+
+quest:
+  preset: quest-base
+  cert: cert.pem
+  key: key.pem
+  # Pass --cert and --key at launch, or put paths to them here.
+
+scenes:
+  - initial_frame: assets/example_data/scenes/*.png

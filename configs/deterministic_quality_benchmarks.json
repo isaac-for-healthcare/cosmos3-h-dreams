@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "description": "Local quality and performance-review scenarios for LingBot and Omnidreams. The quality scenarios use roughly 10-second seeded rollouts for baseline/candidate MP4 comparisons. The one-minute review scenarios collect performance metrics, runtime stats, PAI-Bench inputs, and longer MP4s for review.",
+  "scenarios": [
+    {
+      "id": "lingbot-world-fast-taehv-quality-smoke",
+      "name": "LingBot-World Fast TAEHV seeded quality smoke",
+      "description": "Roughly 10-second LingBot-World Fast rollout with explicit seed and strict PyTorch deterministic settings. This is a local quality signal; LingBot does not currently have the same public bitwise reproducibility CI guarantee as Omnidreams.",
+      "report_group": {
+        "id": "lingbot",
+        "name": "LingBot"
+      },
+      "tags": [
+        "manual",
+        "gpu",
+        "real-demo",
+        "lingbot",
+        "i2v",
+        "quality",
+        "seeded",
+        "quality-10s"
+      ],
+      "env": {
+        "FLASHDREAMS_SYNC_AND_PROFILE": "1",
+        "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"
+      },
+      "command": [
+        "uv",
+        "run",
+        "--project",
+        "integrations_v2/lingbot",
+        "python",
+        "-m",
+        "tools.benchmarks.strict_run",
+        "--",
+        "lingbot-world-fast-taehv-window15-sink3",
+        "mp4",
+        "--scenario.example-data",
+        "true",
+        "--scenario.example-idx",
+        "0",
+        "--scenario.pixel-height",
+        "464",
+        "--scenario.pixel-width",
+        "832",
+        "--scenario.total-blocks",
+        "14",
+        "--output.fps",
+        "16",
+        "--output.path",
+        "{output_dir}/lingbot-world-fast-taehv-quality-smoke.mp4",
+        "--output.stats-path",
+        "{output_dir}/stats_lingbot_world_fast_taehv_quality_smoke.json",
+        "--pipeline.diffusion-model.seed",
+        "1"
+      ],
+      "output_dir_arg": null,
+      "warmup_steps": 6,
+      "requires_runtime_stats": true,
+      "quality_compare_region": "full",
+      "timeout_s": 7200
+    },
+    {
+      "id": "omnidreams-sv-ci-quality-smoke",
+      "name": "Omnidreams single-view CI-style seeded quality smoke",
+      "description": "Roughly 10-second Omnidreams single-view rollout aligned with the same-seed reproducibility CI path: non-perf runner, fixed example data, explicit seed, strict PyTorch deterministic settings, and 38 AR blocks.",
+      "report_group": {
+        "id": "omnidreams",
+        "name": "Omnidreams"
+      },
+      "tags": [
+        "manual",
+        "gpu",
+        "real-demo",
+        "omnidreams",
+        "i2v",
+        "quality",
+        "seeded",
+        "deterministic",
+        "quality-10s"
+      ],
+      "env": {
+        "FLASHDREAMS_SYNC_AND_PROFILE": "1",
+        "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"
+      },
+      "command": [
+        "uv",
+        "run",
+        "--project",
+        "integrations_v2/omnidreams",
+        "python",
+        "-m",
+        "tools.benchmarks.strict_run",
+        "--",
+        "omnidreams",
+        "mp4",
+        "--scenario.example-data",
+        "true",
+        "--scenario.example-data-uuid",
+        "239560dc-33d1-11ef-9720-00044bcbccac",
+        "--scenario.total-blocks",
+        "38",
+        "--output.path",
+        "{output_dir}/omnidreams-sv-ci-quality-smoke.mp4",
+        "--output.stats-path",
+        "{output_dir}/stats_omnidreams_sv_ci_quality_smoke.json",
+        "--pipeline.diffusion-model.seed",
+        "1"
+      ],
+      "output_dir_arg": null,
+      "warmup_steps": 4,
+      "requires_runtime_stats": true,
+      "quality_compare_region": "full",
+      "timeout_s": 7200
+    },
+    {
+      "id": "lingbot-world-fast-taehv-one-minute-review",
+      "name": "LingBot-World Fast TAEHV one-minute review rollout",
+      "description": "Runs the LingBot-World Fast interactive preset for 81 AR blocks. This targets about 60.6 seconds of MP4 output for performance metrics and manual review when the selected pose stream has at least 969 frames.",
+      "report_group": {
+        "id": "lingbot",
+        "name": "LingBot"
+      },
+      "tags": [
+        "manual",
+        "gpu",
+        "real-demo",
+        "lingbot",
+        "i2v",
+        "one-minute",
+        "performance",
+        "review"
+      ],
+      "env": {
+        "FLASHDREAMS_SYNC_AND_PROFILE": "1"
+      },
+      "command": [
+        "uv",
+        "run",
+        "--project",
+        "integrations_v2/lingbot",
+        "flashdreams-run",
+        "lingbot-world-fast-taehv-window15-sink3",
+        "mp4",
+        "--scenario.example-data",
+        "true",
+        "--scenario.example-idx",
+        "0",
+        "--scenario.pixel-height",
+        "464",
+        "--scenario.pixel-width",
+        "832",
+        "--scenario.total-blocks",
+        "81",
+        "--output.fps",
+        "16",
+        "--output.path",
+        "{output_dir}/lingbot-world-fast-taehv-one-minute-review.mp4",
+        "--output.stats-path",
+        "{output_dir}/stats_lingbot_world_fast_taehv_one_minute_review.json"
+      ],
+      "output_dir_arg": null,
+      "warmup_steps": 6,
+      "requires_runtime_stats": true,
+      "quality_baseline_compare": false,
+      "timeout_s": 21600
+    },
+    {
+      "id": "omnidreams-sv-one-minute-review",
+      "name": "Omnidreams single-view one-minute review rollout",
+      "description": "Runs the stable Omnidreams single-view runner for 226 AR blocks with an explicit seed. This targets about 60.2 seconds of MP4 output for performance metrics and manual review when the selected HDMap clip is long enough.",
+      "report_group": {
+        "id": "omnidreams",
+        "name": "Omnidreams"
+      },
+      "tags": [
+        "manual",
+        "gpu",
+        "real-demo",
+        "omnidreams",
+        "i2v",
+        "one-minute",
+        "performance",
+        "review"
+      ],
+      "env": {
+        "FLASHDREAMS_SYNC_AND_PROFILE": "1",
+        "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"
+      },
+      "command": [
+        "uv",
+        "run",
+        "--project",
+        "integrations_v2/omnidreams",
+        "python",
+        "-m",
+        "tools.benchmarks.strict_run",
+        "--",
+        "omnidreams",
+        "mp4",
+        "--scenario.example-data",
+        "true",
+        "--scenario.example-data-uuid",
+        "239560dc-33d1-11ef-9720-00044bcbccac",
+        "--scenario.total-blocks",
+        "226",
+        "--output.path",
+        "{output_dir}/omnidreams-sv-one-minute-review.mp4",
+        "--output.stats-path",
+        "{output_dir}/stats_omnidreams_sv_one_minute_review.json",
+        "--pipeline.diffusion-model.seed",
+        "1"
+      ],
+      "output_dir_arg": null,
+      "warmup_steps": 4,
+      "requires_runtime_stats": true,
+      "quality_baseline_compare": false,
+      "timeout_s": 21600
+    }
+  ]
+}

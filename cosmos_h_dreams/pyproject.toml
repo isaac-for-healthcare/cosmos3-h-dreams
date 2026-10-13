@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flashdreams-cosmos-h-dreams"
+version = "0.1.0"
+description = "Replay and Meta Quest inference for Cosmos3-H-Dreams."
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pillow>=12.3.0",
+    "websockets>=16.0",
+    "flashdreams[serving]",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.entry-points."flashdreams.applications"]
+cosmos-h-dreams = "cosmos_h_dreams.app:create_app"
+
+[tool.uv.sources]
+flashdreams = { workspace = true }
+
+[tool.setuptools.packages.find]
+include = ["cosmos_h_dreams*"]
+exclude = ["tests"]
+
+[tool.setuptools.package-data]
+cosmos_h_dreams = ["web/*.html", "web/*.js"]
+"cosmos_h_dreams._runtime.hand_client" = ["webxr/*.html", "webxr/*.js"]
+
+[tool.uv]
+managed = true

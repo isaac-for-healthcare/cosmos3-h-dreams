@@ -1,0 +1,136 @@
+NVIDIA Cosmos3-H-Dreams — Third-Party Notices
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This file identifies third-party software components that are included
+in, redistributed with, depended upon by, or otherwise present in this
+repository, and reproduces the attribution notices required by the
+corresponding upstream licenses.
+
+The Cosmos3-H-Dreams and included FlashDreams source is licensed under the
+Apache License, Version 2.0 — see LICENSE at the repository root. Per-file SPDX
+identifiers and the REUSE 3.3 manifest at REUSE.toml are the
+machine-readable counterparts of the information below. LICENSES/ contains
+the Apache-2.0 and BSD-3-Clause license texts and Pillow's MIT-CMU license
+and bundled notices. Other dependency license texts are supplied with their
+distributions or available through the upstream links below.
+
+Most dependencies are consumed unmodified at runtime through Python's
+import system (i.e. dynamic linking via the interpreter); their source
+is not redistributed in this repository. The licenses named below are
+SPDX identifiers; the full text of each license is available from the
+upstream project's URL. Source-level redistributions (third-party source
+code physically present in this repository) are disclosed in the
+"Source-level redistributions" section at the end of this file.
+
+Additional third-party libraries are installed as runtime dependencies by
+`uv` / `pip` (resolving from the configured package indexes) or pulled
+from Hugging Face Hub on first run. Those packages and their downloaded
+model assets are not redistributed with this repository and carry their
+own license terms from their respective distribution locations. Review
+the license terms of these packages before use in your environment.
+
+================================================================================
+FlashDreams base runtime dependencies
+================================================================================
+
+boto3                  Apache-2.0   https://github.com/boto/boto3
+botocore               Apache-2.0   https://github.com/boto/botocore
+einops                 MIT          https://github.com/arogozhnikov/einops
+filelock               MIT          https://github.com/tox-dev/py-filelock
+ftfy                   Apache-2.0   https://github.com/rspeer/python-ftfy
+huggingface-hub        Apache-2.0   https://github.com/huggingface/huggingface_hub
+loguru                 MIT          https://github.com/Delgan/loguru
+numpy                  BSD-3-Clause https://github.com/numpy/numpy
+nvidia-ml-py           BSD-3-Clause https://pypi.org/project/nvidia-ml-py/
+psutil                 BSD-3-Clause https://github.com/giampaolo/psutil
+pyyaml                 MIT          https://github.com/yaml/pyyaml
+safetensors            Apache-2.0   https://github.com/huggingface/safetensors
+torch                  BSD-3-Clause https://pytorch.org
+tqdm                   MIT, MPL-2.0 https://github.com/tqdm/tqdm
+transformers           Apache-2.0   https://github.com/huggingface/transformers
+triton-windows         MIT          https://github.com/woct0rdho/triton-windows
+tyro                   MIT          https://github.com/brentyi/tyro
+urllib3                MIT          https://github.com/urllib3/urllib3
+
+================================================================================
+Cosmos3-H-Dreams runtime dependencies
+================================================================================
+
+pillow                 MIT-CMU      https://github.com/python-pillow/Pillow
+websockets             BSD-3-Clause https://github.com/python-websockets/websockets
+
+The product also depends on the included Apache-2.0 FlashDreams package with
+its serving extra (listed below). Model and tokenizer assets are fetched
+separately and retain their upstream terms; product checkpoints and scene data
+are not shipped.
+
+================================================================================
+Reference architectures
+================================================================================
+
+Wan 2.1 / Wan 2.2      Apache-2.0   https://github.com/Wan-Video/Wan2.1
+    The included FlashDreams Wan recipes implement these architectures.
+    Cosmos3-H-Dreams uses the Wan 2.2 VAE. Downloaded model weights retain
+    their upstream terms and are not redistributed in this repository.
+
+================================================================================
+Optional runners: FlashDreams
+================================================================================
+
+mediapy                Apache-2.0   https://github.com/google/mediapy
+opencv-python-headless Apache-2.0   https://github.com/opencv/opencv-python
+scipy                  BSD-3-Clause https://github.com/scipy/scipy
+
+These packages remain available through FlashDreams' runners/examples extras.
+
+================================================================================
+Optional post-processing: RTX Video Super Resolution
+================================================================================
+
+nvidia-vfx             LicenseRef-NvidiaProprietary
+                                    https://pypi.org/project/nvidia-vfx/
+
+The ``rtx-postprocess`` extra installs NVIDIA's proprietary Python bindings
+for RTX Video Super Resolution and deblur. It is optional, dynamically loaded
+only when an RTX preset is selected, and is not redistributed as source in
+this repository.
+
+================================================================================
+Serving: required by Cosmos3-H-Dreams, optional in FlashDreams
+================================================================================
+
+aiohttp                Apache-2.0   https://github.com/aio-libs/aiohttp
+aiortc                 BSD-3-Clause https://github.com/aiortc/aiortc
+
+The serving extra supplies aiohttp and aiortc. Their transitive dependencies
+are resolved in uv.lock and supplied under their own licenses.
+
+================================================================================
+Optional local window: FlashDreams
+================================================================================
+
+imgui-bundle           MIT          https://github.com/pthom/imgui_bundle
+slangpy                Apache-2.0   https://github.com/shader-slang/slangpy
+
+These packages belong to the local-window extra, which Cosmos3-H-Dreams does
+not request.
+
+================================================================================
+CUDA profiles and development dependencies
+================================================================================
+
+torchvision            BSD-3-Clause https://github.com/pytorch/vision
+transformer-engine     Apache-2.0   https://github.com/NVIDIA/TransformerEngine
+
+The CUDA dependency groups include torchvision alongside torch. Transformer
+Engine belongs to the FlashDreams development extra, not its base runtime.
+This file lists runtime dependencies and selected optional/development
+components; it is not a complete inventory of every transitive or test package.
+
+================================================================================
+Source-level redistributions
+================================================================================
+
+No additional third-party source is bundled by the Cosmos3-H-Dreams package.
+Runtime dependencies and downloaded model assets are supplied separately under
+their upstream terms.

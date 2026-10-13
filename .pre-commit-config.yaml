@@ -1,0 +1,60 @@
+default_language_version:
+  node: 25.2.1
+  python: python3
+exclude: |
+  (?x)(
+    ^agents/|
+    /protos/|
+    ^docker/model_specific/cfg_parallel_state\.py$|
+    # Patch files reproduce upstream source byte-for-byte in their context
+    # lines, including trailing whitespace and newline-at-eof. Any hook that
+    # normalizes whitespace (`trailing-whitespace`, `end-of-file-fixer`) will
+    # silently corrupt them and `git apply` will then fail downstream.
+    \.(patch|diff)$
+  )
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.0.1
+    hooks:
+      - id: trailing-whitespace
+        exclude_types: [python]
+        exclude: ^tests/.*/fixtures/.*
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+        exclude_types: [python]
+        exclude: ^tests/.*/fixtures/.*
+      - id: check-symlinks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.7
+    hooks:
+      - alias: ruff-check-only
+        id: ruff-check
+        stages: [manual]
+      - alias: ruff-fix
+        name: ruff fix
+        id: ruff-check
+        args: [
+          "--fix",
+          "--select",
+          "I",
+        ]
+      - alias: ruff-noqa
+        name: ruff noqa
+        id: ruff-check
+        args: [--add-noqa]
+        stages: [manual]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: uv-lock-check
+        name: validate uv lockfile
+        entry: uv lock --check
+        language: system
+        files: '(^|/)pyproject\.toml$|^uv\.lock$'
+        pass_filenames: false
+      - id: ty
+        name: ty type check
+        entry: uv run --locked --group lint ty check
+        language: system
+        types: [python]
+        pass_filenames: false
