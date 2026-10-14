@@ -35,12 +35,19 @@ application entry point is `cosmos-h-dreams`.
 
 ## Development and testing
 
-Use Python 3.12 or newer. Install the product and test tooling from the workspace
+Use Python 3.12, selected by the repository's `.python-version` file. The product
+declares `>=3.12,<3.15`; Python 3.15 is excluded because the locked PyTorch release
+has no compatible wheel. Install the product and test tooling from the workspace
 root:
 
 ```bash
 uv sync --package flashdreams-cosmos-h-dreams --group test --locked
 ```
+
+The browser JavaScript checks require Node.js 14.18.0 or newer; use a currently
+supported LTS release. They load built-in modules with `require("node:...")`,
+which Node.js 12 does not support. Check your version with `node --version`.
+Node.js is test tooling; inference runs in Python.
 
 With the environment installed, run the product and repository CPU checks:
 

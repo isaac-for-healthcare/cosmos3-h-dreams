@@ -57,6 +57,7 @@ Cosmos3-H-Dreams runtime dependencies
 ================================================================================
 
 pillow                 MIT-CMU      https://github.com/python-pillow/Pillow
+pyopenssl              Apache-2.0   https://github.com/pyca/pyopenssl
 websockets             BSD-3-Clause https://github.com/python-websockets/websockets
 
 The product also depends on the included Apache-2.0 FlashDreams package with

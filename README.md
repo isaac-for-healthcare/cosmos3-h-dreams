@@ -20,7 +20,7 @@ assets are supplied separately.
 
 ### 1. Install dependencies
 
-With Python 3.12+, [uv](https://docs.astral.sh/uv/getting-started/installation/),
+With Python 3.12, [uv](https://docs.astral.sh/uv/getting-started/installation/),
 and a compatible NVIDIA GPU environment available:
 
 ```bash
@@ -77,7 +77,8 @@ For recorded actions and MP4 output, see [offline replay](cosmos_h_dreams/README
 | --- | --- |
 | Platform | Linux with an NVIDIA CUDA-capable GPU |
 | GPU memory | Enough for the checkpoint, decoder, and selected cache; minimum VRAM has not yet been established for this release |
-| Python | 3.12 or newer |
+| Python | 3.12 by default via `.python-version`; package range is `>=3.12,<3.15` |
+| Browser test tooling | Node.js 14.18.0 or newer; use a currently supported LTS release |
 | Package manager | uv 0.11.8 or newer; use the committed lockfile |
 | CUDA environment | Driver compatible with the installed PyTorch CUDA build; the workspace defaults to CUDA 13 |
 | Replay output | `ffmpeg` available on `PATH` for MP4 output |

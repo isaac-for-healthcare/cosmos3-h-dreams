@@ -235,7 +235,9 @@ they do not establish GPU speedups or visual quality.
 
 ## Tests
 
-From an environment with the test dependencies installed:
+From an environment with the test dependencies installed and Node.js 14.18.0
+or newer for the browser JavaScript checks (a currently supported LTS release
+is recommended):
 
 ```bash
 PYTHONPATH=cosmos_h_dreams:flashdreams .venv/bin/python -m pytest \

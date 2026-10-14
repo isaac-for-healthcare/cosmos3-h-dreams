@@ -12,10 +12,12 @@ description = "Replay and Meta Quest inference for Cosmos3-H-Dreams."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 dependencies = [
     "pillow>=12.3.0",
     "websockets>=16.0",
+    # aiortc imports pyOpenSSL; older releases fail with cryptography 50.x.
+    "pyopenssl>=26.4.0",
     "flashdreams[serving]",
 ]
 
