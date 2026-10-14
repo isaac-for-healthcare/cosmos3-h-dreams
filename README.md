@@ -76,7 +76,7 @@ For recorded actions and MP4 output, see [offline replay](cosmos_h_dreams/README
 | Component | Requirement |
 | --- | --- |
 | Platform | Linux with an NVIDIA CUDA-capable GPU |
-| GPU memory | Enough for the checkpoint, decoder, and selected cache; minimum VRAM has not yet been established for this release |
+| GPU memory | With the default configuration (480x832 resolution and 12 history latents), the required VRAM is over 32GB. |
 | Python | 3.12 by default via `.python-version`; package range is `>=3.12,<3.15` |
 | Browser test tooling | Node.js 14.18.0 or newer; use a currently supported LTS release |
 | Package manager | uv 0.11.8 or newer; use the committed lockfile |
