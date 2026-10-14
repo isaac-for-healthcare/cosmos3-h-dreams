@@ -105,8 +105,12 @@ def test_session_consumes_full_and_partial_action_chunks(
     assert session.next_step_requirements() is None
 
 
+@pytest.mark.parametrize("device", ["cpu", "cuda:1"])
 def test_profile_prints_first_and_steady_summary(
-    tmp_path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    device,
 ) -> None:
     frame = tmp_path / "frame.png"
     actions = tmp_path / "actions.npy"
@@ -121,6 +125,21 @@ def test_profile_prints_first_and_steady_summary(
             return result
 
     rollout = _ProfileRollout()
+    cuda_calls = []
+    for name, value in (
+        ("synchronize", None),
+        ("reset_peak_memory_stats", None),
+        ("memory_allocated", 3 * 2**20),
+        ("memory_reserved", 5 * 2**20),
+        ("max_memory_allocated", 7 * 2**20),
+        ("max_memory_reserved", 9 * 2**20),
+    ):
+
+        def cuda_stat(selected_device, name=name, value=value):
+            cuda_calls.append((name, str(selected_device)))
+            return value
+
+        monkeypatch.setattr(torch.cuda, name, cuda_stat)
     monkeypatch.setattr(session_module, "prepare_scene", lambda *_args: scene)
     session = CosmosHDreamsSession(
         config=CosmosHDreamsConfig(
@@ -129,7 +148,7 @@ def test_profile_prints_first_and_steady_summary(
             actions=actions,
             domain_id=7,
             prompt="A robot folds a towel.",
-            device="cpu",
+            device=device,
             profile=True,
         ),
         model_factory=lambda **_kwargs: _Model(rollout),
@@ -148,6 +167,67 @@ def test_profile_prints_first_and_steady_summary(
     assert "step 1: total" in output
     assert "KV cache 1.0 MiB" in output
     assert "KV cache: first 1.0 MiB | last 2.0 MiB | peak 2.0 MiB" in output
+    if device == "cpu":
+        assert not cuda_calls
+        assert "VRAM allocated" not in output
+    else:
+        assert "VRAM allocated: peak 7.0 MiB | average 3.0 MiB" in output
+        assert "VRAM reserved: peak 9.0 MiB | average 5.0 MiB" in output
+        assert cuda_calls.count(("reset_peak_memory_stats", device)) == 1
+        assert all(selected == device for _, selected in cuda_calls)
+        assert session._vram_thread is None
+
+
+def test_vram_average_weights_elapsed_time_and_restarts(tmp_path, monkeypatch) -> None:
+    frame = tmp_path / "frame.png"
+    frame.touch()
+    session = CosmosHDreamsSession(
+        config=CosmosHDreamsConfig(
+            checkpoint="/checkpoint",
+            initial_frame=frame,
+            profile=True,
+            device="cuda",
+            prompt="A robot folds a towel.",
+        )
+    )
+    calls = []
+    monkeypatch.setattr(torch.cuda, "current_device", lambda: 2)
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda device: None)
+    monkeypatch.setattr(torch.cuda, "reset_peak_memory_stats", calls.append)
+    monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda device: 700)
+    monkeypatch.setattr(torch.cuda, "max_memory_reserved", lambda device: 900)
+    monkeypatch.setattr(
+        session_module.threading,
+        "Thread",
+        lambda *, target, daemon: SimpleNamespace(start=lambda: None, join=target),
+    )
+    for _ in range(2):
+        timestamps = iter([10.0, 12.0, 15.0])
+        allocated = iter([100, 300, 200])
+        reserved = iter([200, 500, 400])
+        stops = iter([False, True])
+        monkeypatch.setattr(
+            session_module.time, "perf_counter", lambda: next(timestamps)
+        )
+        monkeypatch.setattr(
+            torch.cuda, "memory_allocated", lambda device: next(allocated)
+        )
+        monkeypatch.setattr(
+            torch.cuda, "memory_reserved", lambda device: next(reserved)
+        )
+        monkeypatch.setattr(session._vram_stop, "wait", lambda interval: next(stops))
+        session._start_vram_profile()
+        session._start_vram_profile()  # Later chunks must preserve the run's peaks.
+        session._stop_vram_profile()
+        session._stop_vram_profile()
+        assert session._vram_profile == {
+            "allocated_average": 220.0,
+            "reserved_average": 380.0,
+            "allocated_peak": 700,
+            "reserved_peak": 900,
+        }
+        assert session._vram_thread is None
+    assert calls == [torch.device("cuda:2"), torch.device("cuda:2")]
 
 
 @pytest.mark.parametrize("cache_mode", ["block", "fademem"])

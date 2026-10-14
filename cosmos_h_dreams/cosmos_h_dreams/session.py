@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 import os
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import fields
@@ -67,6 +68,9 @@ class CosmosHDreamsSession(IFlashDreamsApplicationSession):
         self._rows_consumed = 0
         self._step_index = 0
         self._profile_steps: list[dict[str, float]] = []
+        self._vram_stop = threading.Event()
+        self._vram_thread: threading.Thread | None = None
+        self._vram_profile: dict[str, float] = {}
         self._closed = False
         self.model_status = "Loading model…"
 
@@ -255,6 +259,7 @@ class CosmosHDreamsSession(IFlashDreamsApplicationSession):
                 _ready, status, fraction = self._calibration_state()
                 return self._calibration_result(status, fraction)
 
+        self._start_vram_profile()
         started = time.perf_counter()
         latents = rollout.step(actions, profile=self.config.profile)
         model_finished = time.perf_counter()
@@ -335,6 +340,7 @@ class CosmosHDreamsSession(IFlashDreamsApplicationSession):
             and not rollout.accepts_partial_chunks
         ):
             raise ValueError("block cache requires only full action chunks")
+        self._stop_vram_profile()
         rollout.wait_for_pending_cache_update(block=True)
         previous_domain = model.action_domain_id
         previous_status = self.model_status
@@ -353,6 +359,7 @@ class CosmosHDreamsSession(IFlashDreamsApplicationSession):
         self._rollout = new_rollout
         self._rows_consumed = 0
         self._profile_steps.clear()
+        self._vram_profile.clear()
         if self._quest_source is not None:
             self._quest_source.set_normalizer(config.normalizer)
 
@@ -365,12 +372,14 @@ class CosmosHDreamsSession(IFlashDreamsApplicationSession):
             raise RuntimeError("Cannot reset a closed Cosmos3-H-Dreams session.")
         model, rollout = self._require_runtime()
         scene = self._require_scene()
+        self._stop_vram_profile()
         rollout.wait_for_pending_cache_update(block=True)
         if self.config.compile_denoise:
             model.release_session(scene, rollout)
         self._rollout = model.new_session(scene)
         self._rows_consumed = 0
         self._profile_steps.clear()
+        self._vram_profile.clear()
         if reset_step_index:
             self._step_index = 0
         if self._quest_source is not None:
@@ -383,6 +392,7 @@ class CosmosHDreamsSession(IFlashDreamsApplicationSession):
         self._closed = True
         if self._rollout is not None:
             self._rollout.wait_for_pending_cache_update(block=True)
+        self._stop_vram_profile()
         if self._quest_source is not None:
             self._quest_source.close()
         if self.config.profile:
@@ -401,6 +411,60 @@ class CosmosHDreamsSession(IFlashDreamsApplicationSession):
         if self._model is None or self._rollout is None:
             raise RuntimeError("Cosmos3-H-Dreams session must be initialized first.")
         return self._model, self._rollout
+
+    def _start_vram_profile(self) -> None:
+        """Sample allocator memory from the first inference chunk until close/reset."""
+        device = torch.device(self.config.device)
+        if not self.config.profile or device.type != "cuda" or self._vram_thread:
+            return
+        if device.index is None:
+            device = torch.device("cuda", torch.cuda.current_device())
+        torch.cuda.synchronize(device)
+        torch.cuda.reset_peak_memory_stats(device)
+        self._vram_profile.clear()
+        self._vram_stop.clear()
+        started = time.perf_counter()
+        allocated = torch.cuda.memory_allocated(device)
+        reserved = torch.cuda.memory_reserved(device)
+
+        def sample() -> None:
+            previous = started
+            last_allocated, last_reserved = allocated, reserved
+            allocated_integral = reserved_integral = 0.0
+            while True:
+                stopped = self._vram_stop.wait(0.01)
+                now = time.perf_counter()
+                elapsed = now - previous
+                allocated_integral += last_allocated * elapsed
+                reserved_integral += last_reserved * elapsed
+                previous = now
+                last_allocated = torch.cuda.memory_allocated(device)
+                last_reserved = torch.cuda.memory_reserved(device)
+                if stopped:
+                    duration = now - started
+                    self._vram_profile.update(
+                        allocated_average=allocated_integral / duration
+                        if duration
+                        else allocated,
+                        reserved_average=reserved_integral / duration
+                        if duration
+                        else reserved,
+                        allocated_peak=torch.cuda.max_memory_allocated(device),
+                        reserved_peak=torch.cuda.max_memory_reserved(device),
+                    )
+                    return
+
+        # ponytail: 10 ms polling can miss short allocations in the average;
+        # use allocator history for finer attribution. Peaks use allocator counters.
+        self._vram_thread = threading.Thread(target=sample, daemon=True)
+        self._vram_thread.start()
+
+    def _stop_vram_profile(self) -> None:
+        """Finish sampling before releasing or replacing the rollout."""
+        if self._vram_thread is not None:
+            self._vram_stop.set()
+            self._vram_thread.join()
+            self._vram_thread = None
 
     def _print_profile_summary(self) -> None:
         """Print first-chunk and steady-state timings collected for this rollout."""
@@ -425,6 +489,15 @@ class CosmosHDreamsSession(IFlashDreamsApplicationSession):
             f"CUDA graph: {self.config.cuda_graph_denoise}"
         )
         print(f"first total: {_seconds(first.get('total_s'))}")
+        if self._vram_profile:
+            print(
+                "VRAM (PyTorch allocator; first chunk through run end; average sampled every 10 ms):"
+            )
+            for kind in ("allocated", "reserved"):
+                print(
+                    f"VRAM {kind}: peak {self._vram_profile[f'{kind}_peak'] / 2**20:.1f} MiB | "
+                    f"average {self._vram_profile[f'{kind}_average'] / 2**20:.1f} MiB"
+                )
         if "kv_cache_bytes" in first:
             for index, step in enumerate(self._profile_steps, start=1):
                 print(

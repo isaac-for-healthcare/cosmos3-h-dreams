@@ -156,7 +156,7 @@ class CosmosHDreamsApplication(IFlashDreamsApplication):
             "--profile",
             action=argparse.BooleanOptionalAction,
             default=False,
-            help="Report per-step generation time and allocated KV-cache memory.",
+            help="Report stage timings, KV-cache memory, and whole-run peak/average CUDA allocator VRAM.",
         )
         if preset_name is not None:
             if preset_name not in COSMOS_H_DREAMS_PRESETS:

@@ -199,6 +199,15 @@ are consumed and printed in chunks. Profiling synchronizes GPU work and can
 change performance; compare steady-state runs after compilation and cache fill,
 then repeat without profiling.
 
+On CUDA, `--profile` also reports peak and time-weighted average VRAM allocated
+and reserved by PyTorch, including weights, KV cache, and decoder memory. Peaks
+use allocator counters; averages sample every 10 ms and can miss shorter spikes.
+The measurement runs from the first inference chunk through session close,
+including time between chunks, and starts fresh after a reset or scene switch.
+Loading and prewarm are excluded. CUDA context memory, allocations outside
+PyTorch, and other processes are not included; reserved memory includes unused
+space held by PyTorch's caching allocator.
+
 Model time, acquisition time, and display time are separate. A chunk2 step uses
 eight actions. Acquiring measured poses at 30 Hz retimes those actions into the
 10 Hz model timeline; it does not establish physical motion parity. Increasing
