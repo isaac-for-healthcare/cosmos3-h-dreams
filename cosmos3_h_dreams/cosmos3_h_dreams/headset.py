@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Meta Quest controller input for Cosmos3-H-Dreams."""
+"""headset controller input for Cosmos3-H-Dreams."""
 
 from __future__ import annotations
 
@@ -33,16 +33,16 @@ from cosmos3_h_dreams._runtime._rot import (
     matrix_to_rot6d,
     quat_xyzw_to_matrix,
 )
-from cosmos3_h_dreams._runtime.hand_client.quest_source import QuestSource
-from cosmos3_h_dreams._runtime.quest_controller import validate_controller_frame
+from cosmos3_h_dreams._runtime.hand_client.headset_source import HeadsetSource
+from cosmos3_h_dreams._runtime.headset_controller import validate_controller_frame
 
 from .inputs import ACTION_DIM, normalize_and_pad_actions
 
-_QUEST_TO_CAMERA = np.array(
+_HEADSET_TO_CAMERA = np.array(
     [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],
     dtype=np.float32,
 )
-"""Empirical Quest play-space to surgical camera-frame rotation."""
+"""Empirical headset play-space to surgical camera-frame rotation."""
 
 _ARM_LAYOUT = {"left": (0, 9), "right": (14, 23)}
 """Pose and pince indices for the checkpoint's contiguous 14D arm blocks."""
@@ -81,7 +81,7 @@ def controller_frames_to_actions(
     jaw_closed: float = -2.0,
     jaw_is_closed: dict[str, bool] | None = None,
 ) -> Tensor:
-    """Convert an overlapping Quest pose window into model actions.
+    """Convert an overlapping headset pose window into model actions.
 
     The supplied reference frame, or the first frame when omitted, is the
     fixed pose reference for every later row.
@@ -104,7 +104,7 @@ def controller_frames_to_actions(
             does not contain both tracked controllers.
     """
     if len(frames) < 2:
-        raise ValueError("Quest action conversion requires at least two frames")
+        raise ValueError("Headset action conversion requires at least two frames")
     if not (
         np.isfinite(jaw_closed) and np.isfinite(jaw_open) and jaw_closed < jaw_open
     ):
@@ -125,11 +125,11 @@ def controller_frames_to_actions(
             pivot_offsets.get(side, (0.0, 0.0, 0.0)), dtype=np.float32
         )
         if pivot_offset.shape != (3,) or not np.isfinite(pivot_offset).all():
-            raise ValueError(f"{side} Quest pivot offset must be three finite values")
+            raise ValueError(f"{side} headset pivot offset must be three finite values")
         reference = _controller_pose(reference_frame.get(side), pivot_offset)
         if reference is None:
             raise ValueError(
-                f"Quest reference frame requires a tracked {side} controller"
+                f"Headset reference frame requires a tracked {side} controller"
             )
         reference_position, reference_rotation = reference
         last_position, last_rotation = reference
@@ -184,13 +184,13 @@ def _controller_pose(
     if not isinstance(controller, dict) or not bool(controller.get("tracked", True)):
         return None
     rotation = quat_xyzw_to_matrix(controller["orientation"])
-    position = _QUEST_TO_CAMERA @ (
+    position = _HEADSET_TO_CAMERA @ (
         np.asarray(controller["position"], dtype=np.float32) + rotation @ pivot_offset
     )
-    return position, _QUEST_TO_CAMERA @ rotation @ _QUEST_TO_CAMERA.T
+    return position, _HEADSET_TO_CAMERA @ rotation @ _HEADSET_TO_CAMERA.T
 
 
-class QuestActionSource:
+class HeadsetActionSource:
     """Build action windows from recorded controller observations."""
 
     def __init__(
@@ -208,7 +208,7 @@ class QuestActionSource:
         pivot_offsets: dict[str, Sequence[float]] | None = None,
         print_actions: bool = False,
         max_buffered_frames: int | None = None,
-        source_factory: Callable[..., Any] = QuestSource,
+        source_factory: Callable[..., Any] = HeadsetSource,
     ) -> None:
         self._source = source_factory(
             transport=transport,
@@ -236,7 +236,7 @@ class QuestActionSource:
         self._thread: threading.Thread | None = None
         self._calibrated = False
         self._calibration_version = 0
-        self._calibration_status = "Starting Quest controller input"
+        self._calibration_status = "Starting headset controller input"
         self._calibration_fraction = 0.0
         self._calibration_reference: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self._action_reference_frame: dict[str, Any] | None = None
@@ -248,7 +248,7 @@ class QuestActionSource:
         """Start headset setup and calibration without blocking presentation."""
         self._thread = threading.Thread(
             target=self._sample,
-            name="cosmos-h-quest-input",
+            name="cosmos-h-headset-input",
             daemon=True,
         )
         self._thread.start()
@@ -257,7 +257,7 @@ class QuestActionSource:
         """Return readiness plus participant-facing calibration progress."""
         with self._ready:
             if self._error is not None:
-                raise RuntimeError("Quest controller sampling failed") from self._error
+                raise RuntimeError("Headset controller sampling failed") from self._error
             return (
                 self._calibrated,
                 self._calibration_status,
@@ -267,7 +267,7 @@ class QuestActionSource:
     def next_actions(self, rows: int) -> Tensor:
         """Return an action window from consecutive measured poses."""
         if rows < 1:
-            raise ValueError("Quest action rows must be positive")
+            raise ValueError("Headset action rows must be positive")
         needed = rows + 1
         with self._ready:
             calibration_version = self._calibration_version
@@ -282,9 +282,9 @@ class QuestActionSource:
                 )
             )
             if self._error is not None:
-                raise RuntimeError("Quest controller sampling failed") from self._error
+                raise RuntimeError("Headset controller sampling failed") from self._error
             if self._closed:
-                raise RuntimeError("Quest controller source is closed")
+                raise RuntimeError("Headset controller source is closed")
             if (
                 self._restart_requested
                 or not self._calibrated
@@ -313,7 +313,7 @@ class QuestActionSource:
             ):
                 row = self._rows_emitted + index
                 print(
-                    "[quest-actions] "
+                    "[headset-actions] "
                     + json.dumps(
                         {
                             "chunk": self._chunks_emitted,
@@ -372,7 +372,7 @@ class QuestActionSource:
             self._ready.notify_all()
 
     def close(self) -> None:
-        """Stop controller sampling and release the managed Quest transport."""
+        """Stop controller sampling and release the managed headset transport."""
         with self._ready:
             if self._closed:
                 return
@@ -489,7 +489,7 @@ class QuestActionSource:
         self._action_reference_frame = frame
         self._frames.clear()
         self._frames.append(frame)
-        print("[quest] controller calibration complete", flush=True)
+        print("[headset] controller calibration complete", flush=True)
 
     def _update_restart(self, frame: dict[str, Any]) -> bool:
         """Latch a restart after both primary buttons are held for one second."""
@@ -519,7 +519,7 @@ class QuestActionSource:
         self._restart_requested = True
         self._frames.clear()
         self._calibration_status = "Restart requested"
-        print("[quest] generation restart requested", flush=True)
+        print("[headset] generation restart requested", flush=True)
         return True
 
     def _reset_calibration(self, status: str) -> None:
@@ -537,6 +537,6 @@ class QuestActionSource:
 
 __all__ = [
     "GenerationRestartRequested",
-    "QuestActionSource",
+    "HeadsetActionSource",
     "controller_frames_to_actions",
 ]

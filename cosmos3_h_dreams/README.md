@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 # Cosmos3-H-Dreams setup and usage
 
 Cosmos3-H-Dreams generates surgical video from an initial frame and instrument
-actions. It supports offline replay and live Meta Quest browser sessions using
+actions. It supports offline replay and live headset browser sessions using
 the included FlashDreams framework. Start with the repository
 [Quick Start](../README.md#quick-start) for a single launch command.
 
@@ -68,9 +68,9 @@ that match the checkpoint's training conditions; other resolutions and domain
 IDs require separate validation. Height and width must be divisible by 16.
 
 The bundled [real_time_2steps.yaml](configs/real_time_2steps.yaml) selects the
-last model preset and the independent `quest-base` transport preset. `quest-base`
+last model preset and the independent `headset-base` transport preset. `headset-base`
 uses controller acquisition at up to 30 Hz and MJPEG playback at 20 fps. Without
-that Quest preset, the server defaults to WebRTC at 30 display fps and acquisition
+that headset preset, the server defaults to WebRTC at 30 display fps and acquisition
 at the model rate. Changing display FPS only changes playback pacing; changing
 model FPS changes temporal conditioning.
 
@@ -98,7 +98,7 @@ uv run --no-sync --package flashdreams-cosmos3-h-dreams \
   flashdreams-run cosmos3-h-dreams --help
 ```
 
-## Quest browser sessions
+## Headset browser sessions
 
 Generate `cert.pem` and `key.pem` as shown in the root
 [Quick Start](../README.md#quick-start). Keep the key private. The certificate
@@ -106,12 +106,12 @@ must cover the IP or hostname used by the headset; regenerate it if that changes
 
 ```bash
 uv run --no-sync --package flashdreams-cosmos3-h-dreams \
-  python -m cosmos3_h_dreams.quest_webrtc \
+  python -m cosmos3_h_dreams.headset_webrtc \
   --session-config cosmos3_h_dreams/configs/real_time_2steps.yaml
 ```
 
 The server binds to `0.0.0.0:8443` by default. Open
-`https://<server-LAN-IP>:8443/quest` in Quest Browser and select **Enter VR**.
+`https://<server-LAN-IP>:8443/headset` in the headset browser and select **Enter VR**.
 The initial image is displayed during startup. Compiled configurations run
 warmup before accepting live input; the page reports loading, compilation, and
 readiness. The first startup with a cold compiler cache can take time.
@@ -133,8 +133,8 @@ runtime:
   preset: wan-taehv-chunk2-2steps-fademem-compile
   checkpoint: data_local/checkpoints/model.pt
 
-quest:
-  preset: quest-base
+headset:
+  preset: headset-base
   cert: cert.pem
   key: key.pem
 
@@ -142,16 +142,16 @@ scenes:
   - initial_frame: data_local/scenes/*.png
 ```
 
-`runtime.preset` selects model settings and `quest.preset` selects transport/input
+`runtime.preset` selects model settings and `headset.preset` selects transport/input
 settings. Other options use Python field names with underscores. CLI options
-override YAML; `--config` and `--quest-config` replace the corresponding preset
+override YAML; `--config` and `--headset-config` replace the corresponding preset
 selection. Scene CLI overrides such as `--prompt` apply to every scene.
 
 A single-image scene requires a unique `name` and `initial_frame`; its `label`
 defaults to the name. Wildcards expand in sorted path order and use each filename
 as its name and label. Empty matches and duplicate names fail validation.
 Optional scene fields include `prompt`, `domain_id`, `normalizer`, and replay
-`actions`; the Quest server uses live controller input. Omitted scene options
+`actions`; the headset server uses live controller input. Omitted scene options
 inherit preset/default values. Checkpoint, timing, resolution, and cache settings
 are shared across scenes. All relative paths, including certificate paths,
 resolve from the launch directory.
@@ -161,10 +161,10 @@ resolve from the launch directory.
 - Controller translation and rotation drive the corresponding instrument from
   the calibrated reference pose.
 - Index triggers close the jaws when squeezed and reopen them when released.
-  `--quest-jaw-open` and `--quest-jaw-closed` set model-space targets (defaults
+  `--headset-jaw-open` and `--headset-jaw-closed` set model-space targets (defaults
   `+1` and `-2`).
-- Grip buttons drive the energy channel. X/A supply the primary-button channel.
-- Hold X + A for one second to restart and recalibrate. The page also provides
+- Grip buttons drive the energy channel. Each controller’s primary button supplies the primary-button channel.
+- Hold both controllers’ primary buttons for one second to restart and recalibrate. The page also provides
   **Reset simulation**.
 
 Left-controller action channels are translation `0:3`, rotation `3:9`, trigger
@@ -187,13 +187,13 @@ ssh -N -o ExitOnForwardFailure=yes \
 ```
 
 Allow inbound TCP 8443 on that PC, use a certificate covering `<PC-LAN-IP>`, and
-open `https://<PC-LAN-IP>:8443/quest` on the headset. MJPEG uses more bandwidth
+open `https://<PC-LAN-IP>:8443/headset` on the headset. MJPEG uses more bandwidth
 than compressed WebRTC video. Slow viewers skip frames rather than accumulating
 an unbounded queue.
 
 ## Performance and diagnostics
 
-Append `--profile` to record stage timings, or `--print-actions` to the Quest
+Append `--profile` to record stage timings, or `--print-actions` to the headset
 command to log normalized action rows and sampled controller poses. Action rows
 are consumed and printed in chunks. Profiling synchronizes GPU work and can
 change performance; compare steady-state runs after compilation and cache fill,
@@ -251,7 +251,7 @@ is recommended):
 ```bash
 PYTHONPATH=cosmos3_h_dreams:flashdreams .venv/bin/python -m pytest \
   cosmos3_h_dreams/tests -m ci_cpu -q
-node cosmos3_h_dreams/tests/test_quest_status.cjs
+node cosmos3_h_dreams/tests/test_headset_status.cjs
 node cosmos3_h_dreams/tests/test_scene_selector.cjs
 ```
 

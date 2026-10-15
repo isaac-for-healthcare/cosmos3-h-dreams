@@ -13,12 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Replay and Meta Quest Cosmos3-H-Dreams integration."""
+"""Replay and headset Cosmos3-H-Dreams integration."""
 
 from .app import Cosmos3HDreamsApplication, create_app
 from .config import Cosmos3HDreamsConfig
 from .inputs import load_actions
-from .quest import controller_frames_to_actions
+from .headset import controller_frames_to_actions
 from .session import Cosmos3HDreamsSession
 
 __all__ = [

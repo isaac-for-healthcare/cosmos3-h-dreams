@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Meta Quest controller schema, validation, and calibration.
+"""headset controller schema, validation, and calibration.
 
-Pure NumPy and stdlib. This module defines the wire contract between Quest
+Pure NumPy and stdlib. This module defines the wire contract between headset
 controller producers and the demo; the managed transports live in
-:mod:`cosmos3_h_dreams._runtime.hand_client.quest_source`.
+:mod:`cosmos3_h_dreams._runtime.hand_client.headset_source`.
 
 Messages are JSON objects of the form::
 
@@ -112,10 +112,10 @@ def _thumbstick_axes(value: dict[str, Any]) -> np.ndarray | None:
         stick = axes[2:4]
     else:
         raise ValueError(
-            f"Quest controller axes must hold 2 or 4+ values, got {axes.size}"
+            f"Headset controller axes must hold 2 or 4+ values, got {axes.size}"
         )
     if not np.isfinite(stick).all():
-        raise ValueError("Quest controller axes must be finite")
+        raise ValueError("Headset controller axes must be finite")
     return np.clip(stick, -1.0, 1.0)
 
 
@@ -127,12 +127,12 @@ def _controller_payload(raw: object, *, side: str) -> ControllerPayload | None:
     position = np.asarray(value.get("position"), dtype=np.float32).reshape(-1)
     orientation = np.asarray(value.get("orientation"), dtype=np.float32).reshape(-1)
     if position.shape != (3,) or orientation.shape != (4,):
-        raise ValueError("Quest controller requires position[3] and orientation[4]")
+        raise ValueError("Headset controller requires position[3] and orientation[4]")
     if not np.isfinite(position).all() or not np.isfinite(orientation).all():
-        raise ValueError("Quest controller pose must be finite")
+        raise ValueError("Headset controller pose must be finite")
     norm = float(np.linalg.norm(orientation))
     if norm < 1e-8:
-        raise ValueError("Quest controller quaternion has zero norm")
+        raise ValueError("Headset controller quaternion has zero norm")
     buttons = value.get("buttons")
     payload: dict[str, Any] = {
         "position": position.tolist(),
@@ -183,7 +183,7 @@ def _controller_payload(raw: object, *, side: str) -> ControllerPayload | None:
     if "battery" in value and value["battery"] is not None:
         battery = float(value["battery"])
         if not np.isfinite(battery) or not 0.0 <= battery <= 1.0:
-            raise ValueError("Quest controller battery must be between 0 and 1")
+            raise ValueError("Headset controller battery must be between 0 and 1")
         payload["battery"] = battery
     if "gripper_open" in value:
         gripper_open = value["gripper_open"]
@@ -364,7 +364,7 @@ def controller_separation_basis(frame: ControllerFrame) -> np.ndarray:
     """
     sides = controller_sides(frame)
     if not sides:
-        raise ValueError("both Quest controllers are required for calibration")
+        raise ValueError("both headset controllers are required for calibration")
 
     hand_right = np.asarray(sides["right"]["position"], dtype=np.float32) - np.asarray(
         sides["left"]["position"], dtype=np.float32
@@ -392,7 +392,7 @@ def controller_participant_basis(frame: ControllerFrame) -> np.ndarray:
     """
     sides = controller_sides(frame)
     if not sides:
-        raise ValueError("both Quest controllers are required for calibration")
+        raise ValueError("both headset controllers are required for calibration")
 
     separation_basis = controller_separation_basis(frame)
     hand_right = separation_basis[0]
@@ -443,7 +443,7 @@ def controller_wrist_offsets(
     """
     sides = controller_sides(frame)
     if not sides:
-        raise ValueError("both Quest controllers are required for wrist calibration")
+        raise ValueError("both headset controllers are required for wrist calibration")
     basis = np.asarray(basis, dtype=np.float32)
     orientation_basis = (
         basis

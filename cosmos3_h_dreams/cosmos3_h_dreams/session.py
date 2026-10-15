@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Action-replay and Quest sessions for Cosmos3-H-Dreams generation."""
+"""Action-replay and headset sessions for Cosmos3-H-Dreams generation."""
 
 from __future__ import annotations
 
@@ -41,11 +41,11 @@ from PIL import Image, ImageDraw, ImageFont
 from .config import Cosmos3HDreamsConfig
 from .inputs import prepare_scene
 from .model import Cosmos3HDreamsModel
-from .quest import GenerationRestartRequested, QuestActionSource
+from .headset import GenerationRestartRequested, HeadsetActionSource
 from .session_config import SCENE_FIELDS
 
 ModelFactory = Callable[..., Any]
-QuestSourceFactory = Callable[..., Any]
+HeadsetSourceFactory = Callable[..., Any]
 
 
 class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
@@ -56,15 +56,15 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         *,
         config: Cosmos3HDreamsConfig,
         model_factory: ModelFactory = Cosmos3HDreamsModel,
-        quest_source_factory: QuestSourceFactory = QuestActionSource,
+        headset_source_factory: HeadsetSourceFactory = HeadsetActionSource,
     ) -> None:
         self.config = config
         self._model_factory = model_factory
-        self._quest_source_factory = quest_source_factory
+        self._headset_source_factory = headset_source_factory
         self._model: Any | None = None
         self._scene: Any | None = None
         self._rollout: Any | None = None
-        self._quest_source: Any | None = None
+        self._headset_source: Any | None = None
         self._rows_consumed = 0
         self._step_index = 0
         self._profile_steps: list[dict[str, float]] = []
@@ -130,19 +130,19 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         self._rollout = rollout
         self._warmup_rollout(rollout)
         if self.config.actions is None:
-            quest_source = self._quest_source_factory(
+            headset_source = self._headset_source_factory(
                 fps=self.config.fps,
                 normalizer=self.config.normalizer,
-                transport=self.config.quest_transport,
-                relay_url=self.config.quest_relay_url,
-                port=self.config.quest_port,
-                startup_timeout_s=self.config.quest_startup_timeout_s,
-                manual_xr=self.config.quest_manual_xr,
-                jaw_open=self.config.quest_jaw_open,
-                jaw_closed=self.config.quest_jaw_closed,
+                transport=self.config.headset_transport,
+                relay_url=self.config.headset_relay_url,
+                port=self.config.headset_port,
+                startup_timeout_s=self.config.headset_startup_timeout_s,
+                manual_xr=self.config.headset_manual_xr,
+                jaw_open=self.config.headset_jaw_open,
+                jaw_closed=self.config.headset_jaw_closed,
             )
-            quest_source.start()
-            self._quest_source = quest_source
+            headset_source.start()
+            self._headset_source = headset_source
 
     def _warmup_rollout(self, rollout: Any) -> None:
         """Prepare compiled graphs before exposing a new rollout to live input."""
@@ -192,7 +192,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
                 "model_id": "cosmos3-h-dreams",
                 "action_rows": int(scene.replay_actions.shape[0]),
                 "action_source": (
-                    "replay" if self.config.actions is not None else "quest"
+                    "replay" if self.config.actions is not None else "headset"
                 ),
             },
         )
@@ -231,7 +231,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         """Generate the next chunk from the selected action source."""
         if inputs.values:
             raise ValueError("Cosmos3-H-Dreams consumes no host-provided inputs.")
-        if self._quest_source is not None and self._quest_source.take_restart_request():
+        if self._headset_source is not None and self._headset_source.take_restart_request():
             self._restart_from_initial_frame(reset_step_index=False)
             _ready, status, fraction = self._calibration_state()
             return self._calibration_result(status, fraction)
@@ -240,20 +240,20 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
             raise RuntimeError("Cosmos3-H-Dreams has no action rows remaining.")
         scene = self._require_scene()
         _calibrated, status, fraction = self._calibration_state()
-        if self._quest_source is not None and bool(
+        if self._headset_source is not None and bool(
             requirements.metadata.get("calibration")
         ):
             return self._calibration_result(status, fraction)
         model, rollout = self._require_runtime()
         rows = requirements.input_frame_count
         input_started = time.perf_counter()
-        if self._quest_source is None:
+        if self._headset_source is None:
             actions = scene.replay_actions[
                 self._rows_consumed : self._rows_consumed + rows
             ]
         else:
             try:
-                actions = self._quest_source.next_actions(rows)
+                actions = self._headset_source.next_actions(rows)
             except GenerationRestartRequested:
                 self._restart_from_initial_frame(reset_step_index=False)
                 _ready, status, fraction = self._calibration_state()
@@ -286,10 +286,10 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
                 "action_start": self._rows_consumed,
                 "action_rows": rows,
                 "action_capture_ns": getattr(
-                    self._quest_source, "last_action_capture_ns", None
+                    self._headset_source, "last_action_capture_ns", None
                 ),
                 "action_first_capture_ns": getattr(
-                    self._quest_source, "last_action_first_capture_ns", None
+                    self._headset_source, "last_action_first_capture_ns", None
                 ),
             },
             metrics=metrics,
@@ -299,7 +299,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         return result
 
     def _calibration_state(self) -> tuple[bool, str, float]:
-        source = self._quest_source
+        source = self._headset_source
         if source is None:
             return True, "", 1.0
         return source.calibration_state()
@@ -360,8 +360,8 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         self._rows_consumed = 0
         self._profile_steps.clear()
         self._vram_profile.clear()
-        if self._quest_source is not None:
-            self._quest_source.set_normalizer(config.normalizer)
+        if self._headset_source is not None:
+            self._headset_source.set_normalizer(config.normalizer)
 
     def reset(self) -> None:
         """Restart generation from the original image without reloading weights."""
@@ -382,8 +382,8 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         self._vram_profile.clear()
         if reset_step_index:
             self._step_index = 0
-        if self._quest_source is not None:
-            self._quest_source.reset_calibration()
+        if self._headset_source is not None:
+            self._headset_source.reset_calibration()
 
     def close(self) -> None:
         """Finish pending cache work and release the loaded runtime."""
@@ -393,12 +393,12 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         if self._rollout is not None:
             self._rollout.wait_for_pending_cache_update(block=True)
         self._stop_vram_profile()
-        if self._quest_source is not None:
-            self._quest_source.close()
+        if self._headset_source is not None:
+            self._headset_source.close()
         if self.config.profile:
             self._print_profile_summary()
         self._rollout = None
-        self._quest_source = None
+        self._headset_source = None
         self._scene = None
         self._model = None
 
@@ -542,7 +542,7 @@ def _calibration_screen(
     status: str,
     fraction: float,
 ) -> torch.Tensor:
-    """Render the initial scene with concise Quest calibration guidance."""
+    """Render the initial scene with concise headset calibration guidance."""
     image = Image.fromarray(np.asarray(initial_rgb, dtype=np.uint8), mode="RGB")
     overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)

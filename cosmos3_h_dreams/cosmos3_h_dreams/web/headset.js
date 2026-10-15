@@ -82,7 +82,7 @@ async function connectVideo() {
       done();
     });
   }
-  const response = await fetch("/quest/offer", {
+  const response = await fetch("/headset/offer", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(connection.localDescription),

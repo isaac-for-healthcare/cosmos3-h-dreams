@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""CPU checks for Cosmos3-H-Dreams Quest control."""
+"""CPU checks for Cosmos3-H-Dreams headset control."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ import pytest
 import torch
 from cosmos3_h_dreams.app import Cosmos3HDreamsApplication
 from cosmos3_h_dreams.config import Cosmos3HDreamsConfig
-from cosmos3_h_dreams.quest import QuestActionSource, controller_frames_to_actions
+from cosmos3_h_dreams.headset import HeadsetActionSource, controller_frames_to_actions
 from cosmos3_h_dreams.session import Cosmos3HDreamsSession
 from flashdreams.demo import CanonicalInputWindow
 from flashdreams.infra.time import TimeWindow
@@ -71,7 +71,7 @@ def _frame(
     }
 
 
-def test_quest_frames_map_to_the_28d_checkpoint_layout() -> None:
+def test_headset_frames_map_to_the_28d_checkpoint_layout() -> None:
     reference = _frame(
         1,
         left=_controller((0.0, 0.0, 0.0), side="left"),
@@ -110,7 +110,7 @@ def test_quest_frames_map_to_the_28d_checkpoint_layout() -> None:
     assert not np.count_nonzero(actual[0, 28:])
 
 
-def test_quest_pivot_offset_removes_rotation_induced_translation() -> None:
+def test_headset_pivot_offset_removes_rotation_induced_translation() -> None:
     reference = _frame(
         0,
         left=_controller((0.0, 0.0, 0.0), side="left"),
@@ -135,7 +135,7 @@ def test_quest_pivot_offset_removes_rotation_induced_translation() -> None:
     np.testing.assert_allclose(compensated[0, 14:17], 0.0)
 
 
-def test_application_selects_quest_without_an_action_file(tmp_path) -> None:
+def test_application_selects_headset_without_an_action_file(tmp_path) -> None:
     frame = tmp_path / "frame.png"
     Image.new("RGB", (32, 32)).save(frame)
     application = Cosmos3HDreamsApplication()
@@ -146,7 +146,7 @@ def test_application_selects_quest_without_an_action_file(tmp_path) -> None:
             "/checkpoint",
             "--initial-frame",
             str(frame),
-            "--quest",
+            "--headset",
             "--device",
             "cpu",
         ]
@@ -156,14 +156,14 @@ def test_application_selects_quest_without_an_action_file(tmp_path) -> None:
     assert isinstance(session, Cosmos3HDreamsSession)
     assert application.supports_session_reset
     assert session.config.actions is None
-    assert session.config.quest_transport == "webxr"
-    assert (session.config.quest_jaw_open, session.config.quest_jaw_closed) == (
+    assert session.config.headset_transport == "webxr"
+    assert (session.config.headset_jaw_open, session.config.headset_jaw_closed) == (
         1.0,
         -2.0,
     )
 
 
-def test_quest_pose_rows_are_relative_to_the_window_reference() -> None:
+def test_headset_pose_rows_are_relative_to_the_window_reference() -> None:
     frames = tuple(
         _frame(
             index,
@@ -178,7 +178,7 @@ def test_quest_pose_rows_are_relative_to_the_window_reference() -> None:
     np.testing.assert_allclose(actual[:, 0], (10.0, 20.0))
 
 
-def test_quest_jaw_click_hysteresis_and_tracking_loss() -> None:
+def test_headset_jaw_click_hysteresis_and_tracking_loss() -> None:
     frames = tuple(
         _frame(
             index,
@@ -212,7 +212,7 @@ def test_quest_jaw_click_hysteresis_and_tracking_loss() -> None:
     assert jaw_state == {"left": False, "right": False}
 
 
-def test_quest_jaw_targets_bypass_pose_normalization(tmp_path) -> None:
+def test_headset_jaw_targets_bypass_pose_normalization(tmp_path) -> None:
     normalizer = tmp_path / "normalizer.npz"
     np.savez(
         normalizer,
@@ -244,7 +244,7 @@ def test_quest_jaw_targets_bypass_pose_normalization(tmp_path) -> None:
     np.testing.assert_array_equal(actions[:, [10, 24]], ((1.0, 0.0), (0.0, 1.0)))
 
 
-def test_quest_source_keeps_its_pose_anchor_across_chunks(
+def test_headset_source_keeps_its_pose_anchor_across_chunks(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     frames = [
@@ -259,7 +259,7 @@ def test_quest_source_keeps_its_pose_anchor_across_chunks(
         )
         for index in range(5)
     ]
-    source = QuestActionSource(
+    source = HeadsetActionSource(
         fps=10.0,
         normalizer=None,
         transport="webxr",
@@ -268,7 +268,7 @@ def test_quest_source_keeps_its_pose_anchor_across_chunks(
         startup_timeout_s=1.0,
         manual_xr=False,
         print_actions=True,
-        source_factory=lambda **kwargs: _RawQuestSource(frames=[], **kwargs),
+        source_factory=lambda **kwargs: _RawHeadsetSource(frames=[], **kwargs),
     )
     source._calibrated = True
     source._action_reference_frame = frames[0]
@@ -285,9 +285,9 @@ def test_quest_source_keeps_its_pose_anchor_across_chunks(
     np.testing.assert_allclose(second[:, 9], (-2.0, 1.0))
     assert source._action_reference_frame is None
     records = [
-        json.loads(line.removeprefix("[quest-actions] "))
+        json.loads(line.removeprefix("[headset-actions] "))
         for line in capsys.readouterr().out.splitlines()
-        if line.startswith("[quest-actions] ")
+        if line.startswith("[headset-actions] ")
     ]
     assert [record["row"] for record in records] == list(range(4))
     assert [record["chunk"] for record in records] == [0, 0, 1, 1]
@@ -300,7 +300,7 @@ def test_quest_source_keeps_its_pose_anchor_across_chunks(
 
 
 def test_measured_windows_preserve_30hz_motion_with_10hz_model_time() -> None:
-    source = QuestActionSource(
+    source = HeadsetActionSource(
         fps=10,
         normalizer=None,
         transport="webxr",
@@ -309,7 +309,7 @@ def test_measured_windows_preserve_30hz_motion_with_10hz_model_time() -> None:
         startup_timeout_s=1,
         manual_xr=False,
         max_buffered_frames=9,
-        source_factory=lambda **kwargs: _RawQuestSource(frames=[], **kwargs),
+        source_factory=lambda **kwargs: _RawHeadsetSource(frames=[], **kwargs),
     )
 
     def frame(index):
@@ -377,7 +377,7 @@ class _Model:
         return torch.zeros((1, 3, 2, 2))
 
 
-class _QuestSource:
+class _HeadsetSource:
     def __init__(self, **kwargs: object) -> None:
         self.kwargs = kwargs
         self.started = False
@@ -411,18 +411,18 @@ class _QuestSource:
         self.closed = True
 
 
-def test_session_uses_live_quest_actions(
+def test_session_uses_live_headset_actions(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     frame = tmp_path / "frame.png"
     Image.new("RGB", (2, 2)).save(frame)
     scene = SimpleNamespace(fps=15.0, replay_actions=torch.empty((0, 64)))
     rollout = _Rollout()
-    source: _QuestSource | None = None
+    source: _HeadsetSource | None = None
 
-    def create_source(**kwargs: object) -> _QuestSource:
+    def create_source(**kwargs: object) -> _HeadsetSource:
         nonlocal source
-        source = _QuestSource(**kwargs)
+        source = _HeadsetSource(**kwargs)
         return source
 
     monkeypatch.setattr(session_module, "prepare_scene", lambda *_args: scene)
@@ -434,7 +434,7 @@ def test_session_uses_live_quest_actions(
             device="cpu",
         ),
         model_factory=lambda **_kwargs: _Model(rollout),
-        quest_source_factory=create_source,
+        headset_source_factory=create_source,
     )
     window = CanonicalInputWindow(window=TimeWindow(start_s=0.0, end_s=1.0))
 
@@ -465,11 +465,11 @@ def test_live_session_presents_calibration_before_generation(
         init_rgb=np.full((32, 32, 3), (20, 40, 60), dtype=np.uint8),
     )
     rollout = _Rollout()
-    source: _QuestSource | None = None
+    source: _HeadsetSource | None = None
 
-    def create_source(**kwargs: object) -> _QuestSource:
+    def create_source(**kwargs: object) -> _HeadsetSource:
         nonlocal source
-        source = _QuestSource(**kwargs)
+        source = _HeadsetSource(**kwargs)
         source.calibrated = False
         return source
 
@@ -483,7 +483,7 @@ def test_live_session_presents_calibration_before_generation(
             fps=10.0,
         ),
         model_factory=lambda **_kwargs: _Model(rollout),
-        quest_source_factory=create_source,
+        headset_source_factory=create_source,
     )
     window = CanonicalInputWindow(window=TimeWindow(start_s=0.0, end_s=0.1))
 
@@ -530,11 +530,11 @@ def test_session_reset_rebuilds_rollout_from_initial_frame(
             rollouts.append(rollout)
             return rollout
 
-    source: _QuestSource | None = None
+    source: _HeadsetSource | None = None
 
-    def create_source(**kwargs: object) -> _QuestSource:
+    def create_source(**kwargs: object) -> _HeadsetSource:
         nonlocal source
-        source = _QuestSource(**kwargs)
+        source = _HeadsetSource(**kwargs)
         return source
 
     monkeypatch.setattr(session_module, "prepare_scene", lambda *_args: scene)
@@ -547,7 +547,7 @@ def test_session_reset_rebuilds_rollout_from_initial_frame(
             fps=10.0,
         ),
         model_factory=lambda **_kwargs: _ResetModel(),
-        quest_source_factory=create_source,
+        headset_source_factory=create_source,
     )
     window = CanonicalInputWindow(window=TimeWindow(start_s=0.0, end_s=1.0))
 
@@ -573,7 +573,7 @@ def test_session_reset_rebuilds_rollout_from_initial_frame(
     assert setup.metadata["action_rows"] == 0
 
 
-class _RawQuestSource:
+class _RawHeadsetSource:
     def __init__(self, *, frames: list[dict[str, object]], **_kwargs: object) -> None:
         self.frames = frames
         self.stopped = False
@@ -590,7 +590,7 @@ class _RawQuestSource:
         self.stopped = True
 
 
-def test_quest_source_calibrates_before_emitting_actions() -> None:
+def test_headset_source_calibrates_before_emitting_actions() -> None:
     frames = [
         _frame(
             timestamp,
@@ -599,14 +599,14 @@ def test_quest_source_calibrates_before_emitting_actions() -> None:
         )
         for timestamp in (0, 100_000_000, 200_000_000, 300_000_000, 400_000_000)
     ]
-    raw_source: _RawQuestSource | None = None
+    raw_source: _RawHeadsetSource | None = None
 
-    def create_source(**kwargs: object) -> _RawQuestSource:
+    def create_source(**kwargs: object) -> _RawHeadsetSource:
         nonlocal raw_source
-        raw_source = _RawQuestSource(frames=frames, **kwargs)
+        raw_source = _RawHeadsetSource(frames=frames, **kwargs)
         return raw_source
 
-    source = QuestActionSource(
+    source = HeadsetActionSource(
         fps=10.0,
         normalizer=None,
         transport="webxr",
@@ -624,7 +624,7 @@ def test_quest_source_calibrates_before_emitting_actions() -> None:
             break
         time.sleep(0.001)
     else:
-        pytest.fail("Quest source did not calibrate")
+        pytest.fail("Headset source did not calibrate")
 
     actions = source.next_actions(1)
     source.close()
@@ -634,7 +634,7 @@ def test_quest_source_calibrates_before_emitting_actions() -> None:
     assert raw_source is not None and raw_source.stopped
 
 
-def test_quest_source_requests_restart_after_both_primary_buttons_are_held() -> None:
+def test_headset_source_requests_restart_after_both_primary_buttons_are_held() -> None:
     frames = [
         _frame(
             timestamp,
@@ -648,7 +648,7 @@ def test_quest_source_requests_restart_after_both_primary_buttons_are_held() -> 
         for timestamp in range(0, 1_500_000_000, 100_000_000)
     ]
 
-    source = QuestActionSource(
+    source = HeadsetActionSource(
         fps=10.0,
         normalizer=None,
         transport="webxr",
@@ -656,7 +656,7 @@ def test_quest_source_requests_restart_after_both_primary_buttons_are_held() -> 
         port=8444,
         startup_timeout_s=1.0,
         manual_xr=False,
-        source_factory=lambda **kwargs: _RawQuestSource(frames=frames, **kwargs),
+        source_factory=lambda **kwargs: _RawHeadsetSource(frames=frames, **kwargs),
     )
     source.start()
     deadline = time.monotonic() + 1.0
@@ -665,7 +665,7 @@ def test_quest_source_requests_restart_after_both_primary_buttons_are_held() -> 
             break
         time.sleep(0.001)
     else:
-        pytest.fail("Quest source did not request a restart")
+        pytest.fail("Headset source did not request a restart")
 
     source.reset_calibration()
     calibrated, status, fraction = source.calibration_state()
@@ -680,9 +680,9 @@ def test_quest_source_requests_restart_after_both_primary_buttons_are_held() -> 
 def test_recalibration_wakes_a_blocked_action_window(reset_before_read):
     import threading
 
-    from cosmos3_h_dreams.quest import GenerationRestartRequested
+    from cosmos3_h_dreams.headset import GenerationRestartRequested
 
-    source = QuestActionSource(
+    source = HeadsetActionSource(
         fps=10,
         normalizer=None,
         transport="webxr",
@@ -690,7 +690,7 @@ def test_recalibration_wakes_a_blocked_action_window(reset_before_read):
         port=8444,
         startup_timeout_s=1,
         manual_xr=False,
-        source_factory=lambda **kwargs: _RawQuestSource(frames=[], **kwargs),
+        source_factory=lambda **kwargs: _RawHeadsetSource(frames=[], **kwargs),
     )
     source._calibrated = True
     if reset_before_read:

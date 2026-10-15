@@ -19,7 +19,7 @@ from cosmos3_h_dreams._runtime.fetch_checkpoint import (
     _cache_dir,
     ensure_checkpoint,
 )
-from cosmos3_h_dreams._runtime.hand_client import quest_source
+from cosmos3_h_dreams._runtime.hand_client import headset_source
 from cosmos3_h_dreams._runtime.hand_client.webxr_server import page_asset
 from cosmos3_h_dreams.app import Cosmos3HDreamsApplication
 from cosmos3_h_dreams.config import Cosmos3HDreamsConfig
@@ -59,15 +59,11 @@ def test_credentials_follow_explicit_then_environment(monkeypatch):
     assert resolve_credential_path() == "/user/from-env.secret"
 
 
-def test_quest_resources_are_inside_the_product_package():
+def test_headset_resources_are_inside_the_product_package():
     package = files("cosmos3_h_dreams")
-    assert not package.joinpath("quest-offhead-teleop.sh").is_file()
-    assert not package.joinpath("_runtime/quest_ui.py").is_file()
-    assert not package.joinpath("quest_native").is_dir()
-    assert not package.joinpath("quest-native.sh").is_file()
     assert b"<html" in page_asset("index.html").lower()
     assert page_asset("app.js")
-    assert package.joinpath("web/quest.html").is_file()
+    assert package.joinpath("web/headset.html").is_file()
     assert package.joinpath("web/viewer.js").is_file()
 
 
@@ -148,22 +144,22 @@ def test_initial_frame_encoder_preserves_layout_and_pixel_normalization(monkeypa
 
 
 def test_native_transport_is_rejected_before_headset_or_model_startup(tmp_path):
-    with pytest.raises(ValueError, match="unknown Quest transport"):
-        quest_source.QuestSource(transport="native")
+    with pytest.raises(ValueError, match="unknown headset transport"):
+        headset_source.HeadsetSource(transport="native")
     frame = tmp_path / "frame.png"
     frame.touch()
-    with pytest.raises(ValueError, match="unknown Quest transport"):
+    with pytest.raises(ValueError, match="unknown headset transport"):
         Cosmos3HDreamsConfig(
             checkpoint="model.pt",
             initial_frame=frame,
             prompt="scene",
-            quest_transport="native",
+            headset_transport="native",
         )
     with pytest.raises(SystemExit) as error:
         Cosmos3HDreamsApplication().init(
             [
-                "--quest",
-                "--quest-transport",
+                "--headset",
+                "--headset-transport",
                 "native",
                 "--checkpoint",
                 "model.pt",
@@ -176,8 +172,8 @@ def test_native_transport_is_rejected_before_headset_or_model_startup(tmp_path):
 
 def test_webxr_store_preserves_validation_freshness_and_tracking_loss(monkeypatch):
     clock = [1_000_000_000]
-    monkeypatch.setattr(quest_source.time, "perf_counter_ns", lambda: clock[0])
-    store = quest_source.FrameStore()
+    monkeypatch.setattr(headset_source.time, "perf_counter_ns", lambda: clock[0])
+    store = headset_source.FrameStore()
     store.consume(json.dumps({"type": "status", "stage": "session"}))
     assert store.stage == "session" and not store.ready()
     store.consume("invalid JSON")
@@ -209,9 +205,9 @@ def test_webxr_store_preserves_validation_freshness_and_tracking_loss(monkeypatc
     assert store.snapshot()["right"]["tracked"] is False
 
 
-def test_quest_local_input_requires_https_before_starting_server():
-    source = quest_source.QuestSource()
-    with pytest.raises(ValueError, match="HTTPS server or --quest-relay-url"):
+def test_headset_local_input_requires_https_before_starting_server():
+    source = headset_source.HeadsetSource()
+    with pytest.raises(ValueError, match="HTTPS server or --headset-relay-url"):
         source._serve()
     assert source._server is None
 

@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 
 The WebXR page the headset loads. Everything is sized for reading at arm's
-length in the Quest browser, and the button keeps the id and label the managed
+length in the headset browser, and the button keeps the id and label the managed
 launcher clicks through Chrome DevTools.
 -->
 <!doctype html>
@@ -79,7 +79,7 @@ launcher clicks through Chrome DevTools.
     <div class="row"><span>Frames sent</span><span class="value" id="sent">0</span></div>
     <div id="log"></div>
 
-    <!-- Cache-busted because the Quest browser otherwise serves a stale copy
+    <!-- Cache-busted because the headset browser otherwise serves a stale copy
          long after the file on disk has changed. -->
     <script src="/app.js?v=1"></script>
   </body>

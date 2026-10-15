@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Resolved Cosmos3-H-Dreams replay and Quest configuration."""
+"""Resolved Cosmos3-H-Dreams replay and headset configuration."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from cosmos3_h_dreams._runtime._hand_kv_session import validate_cache_options
 
 COSMOS_H_DOMAIN_ID = 32
 
-"""Default text condition for CMR replay and Quest sessions."""
+"""Default text condition for CMR replay and headset sessions."""
 DEFAULT_PROMPT = (
     "Endoscopic view of a dual-arm dVRK robot manipulating "
     "surgical sutures on a tabletop."
@@ -139,25 +139,25 @@ class Cosmos3HDreamsConfig:
     normalizer: Path | None = None
     """Optional ``.npz`` containing 28D ``offset`` and ``scale`` arrays."""
 
-    quest_transport: str = "webxr"
-    """Quest controller transport: hosted ``webxr``."""
+    headset_transport: str = "webxr"
+    """Headset controller transport: hosted ``webxr``."""
 
-    quest_relay_url: str | None = None
+    headset_relay_url: str | None = None
     """Optional external WebXR controller relay URL."""
 
-    quest_port: int = 8444
-    """Local port used by the managed Quest controller transport."""
+    headset_port: int = 8444
+    """Local port used by the managed headset controller transport."""
 
-    quest_startup_timeout_s: float = 300.0
+    headset_startup_timeout_s: float = 300.0
     """Maximum wait for the first tracked controller pair."""
 
-    quest_manual_xr: bool = False
+    headset_manual_xr: bool = False
     """Leave entry into hosted WebXR immersive mode to the operator."""
 
-    quest_jaw_open: float = 1.0
+    headset_jaw_open: float = 1.0
     """Model-space jaw target sent while the index trigger is released."""
 
-    quest_jaw_closed: float = -2.0
+    headset_jaw_closed: float = -2.0
     """Model-space jaw target sent while the index trigger is clicked."""
 
     credential_path: str | None = None
@@ -245,18 +245,18 @@ class Cosmos3HDreamsConfig:
             raise ValueError("prompt must not be empty")
         if self.fps <= 0:
             raise ValueError("fps must be positive")
-        if self.quest_transport != "webxr":
-            raise ValueError(f"unknown Quest transport {self.quest_transport!r}")
-        if not 1 <= self.quest_port <= 65535:
-            raise ValueError("quest_port must be between 1 and 65535")
-        if self.quest_startup_timeout_s <= 0:
-            raise ValueError("quest_startup_timeout_s must be positive")
+        if self.headset_transport != "webxr":
+            raise ValueError(f"unknown headset transport {self.headset_transport!r}")
+        if not 1 <= self.headset_port <= 65535:
+            raise ValueError("headset_port must be between 1 and 65535")
+        if self.headset_startup_timeout_s <= 0:
+            raise ValueError("headset_startup_timeout_s must be positive")
         if not (
-            isfinite(self.quest_jaw_closed)
-            and isfinite(self.quest_jaw_open)
-            and self.quest_jaw_closed < self.quest_jaw_open
+            isfinite(self.headset_jaw_closed)
+            and isfinite(self.headset_jaw_open)
+            and self.headset_jaw_closed < self.headset_jaw_open
         ):
-            raise ValueError("quest jaw values must be finite with closed < open")
+            raise ValueError("headset jaw values must be finite with closed < open")
         if self.height <= 0 or self.width <= 0:
             raise ValueError("height and width must be positive")
         if self.height % 16 or self.width % 16:

@@ -16,7 +16,7 @@ serve HTTPS instead and reach it over the LAN; the page follows
 
 This module is transport only. It hands raw messages to a callback and knows
 nothing about the schema, which lives in
-:mod:`cosmos3_h_dreams._runtime.quest_controller`.
+:mod:`cosmos3_h_dreams._runtime.headset_controller`.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ DEFAULT_PORT = 8444
 WS_PATH = "/ws"
 
 _PAGE_DIR = Path(__file__).resolve().parent / "webxr"
-# Served fresh every time: the Quest browser holds onto assets aggressively, and
+# Served fresh every time: the headset browser holds onto assets aggressively, and
 # an operator cannot easily clear its cache mid-demo.
 _NO_STORE = "no-store, max-age=0, must-revalidate"
 _ROUTES = {
@@ -120,7 +120,7 @@ class WebXRServer:
             target=self._server.serve_forever, name="webxr-server", daemon=True
         )
         self._thread.start()
-        print(f"[quest] serving the WebXR page at {self.url}", flush=True)
+        print(f"[headset] serving the WebXR page at {self.url}", flush=True)
 
     def stop(self) -> None:
         """Stop serving and drop open connections. Idempotent."""
@@ -163,11 +163,11 @@ class WebXRServer:
         """Pump one page connection's messages into the callback."""
         with self._lock:
             self._connections += 1
-        print("[quest] the WebXR page connected", flush=True)
+        print("[headset] the WebXR page connected", flush=True)
         try:
             for message in connection:
                 self._on_message(message)
         except Exception:  # noqa: BLE001 - a dropped page must not kill the server
             pass
         finally:
-            print("[quest] the WebXR page disconnected", flush=True)
+            print("[headset] the WebXR page disconnected", flush=True)

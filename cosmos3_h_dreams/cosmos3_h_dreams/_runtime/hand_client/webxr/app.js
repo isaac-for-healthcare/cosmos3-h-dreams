@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Reads Quest controllers in an immersive WebXR session and streams them to the
+// Reads headset controllers in an immersive WebXR session and streams them to the
 // demo client as `xr_frame` messages.
 //
-// The schema is the one documented in quest_controller.py and implemented by
+// The schema is the one documented in headset_controller.py and implemented by
 // synthetic_source.py. Keeping to it is the whole contract: anything that
 // produces these messages can drive the demo.
 //

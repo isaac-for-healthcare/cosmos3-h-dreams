@@ -20,12 +20,12 @@ async function refreshModelStatus() {
   }
 }
 let peer = null;
-video.onplaying = () => { status.textContent = "Live Quest video"; };
+video.onplaying = () => { status.textContent = "Live headset video"; };
 
 async function connect() {
   if (video.dataset.transport === "mjpeg") {
     video.src = `/video?t=${Date.now()}`;
-    status.textContent = "Live view · Waiting for Quest frames…";
+    status.textContent = "Live view · Waiting for headset frames…";
     video.onerror = () => {
       status.textContent = "Video connection lost · Reconnecting…";
       setTimeout(() => { void connect().catch(showError); }, 1000);
@@ -42,7 +42,7 @@ async function connect() {
   connection.onconnectionstatechange = () => {
     if (peer !== connection) return;
     status.textContent = connection.connectionState === "connected"
-      ? "Live view · Waiting for Quest frames…"
+      ? "Live view · Waiting for headset frames…"
       : `Video: ${connection.connectionState}`;
     if (connection.connectionState === "failed" || connection.connectionState === "disconnected") {
       connection.close();

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Session YAML with shared model options, Quest options, and named scenes."""
+"""Session YAML with shared model options, Headset options, and named scenes."""
 
 from __future__ import annotations
 
@@ -41,13 +41,13 @@ def load_session_config(path: Path) -> dict[str, Any]:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as error:
         raise ValueError(f"Invalid session YAML {path}: {error}") from error
-    _mapping(data, {"runtime", "quest", "scenes"}, "session")
+    _mapping(data, {"runtime", "headset", "scenes"}, "session")
     runtime = data.setdefault("runtime", {})
-    quest = data.setdefault("quest", {})
+    headset = data.setdefault("headset", {})
     model_fields = {field.name for field in fields(Cosmos3HDreamsConfig)}
     _mapping(runtime, (model_fields - SCENE_FIELDS) | {"preset"}, "runtime")
     _mapping(
-        quest,
+        headset,
         {
             "preset",
             "host",
@@ -56,13 +56,13 @@ def load_session_config(path: Path) -> dict[str, Any]:
             "key",
             "display_fps",
             "video_transport",
-            "quest_input_fps",
+            "headset_input_fps",
             "overlap_playback",
             "print_actions",
         },
-        "quest",
+        "headset",
     )
-    for section in (runtime, quest):
+    for section in (runtime, headset):
         if "preset" in section and not isinstance(section["preset"], str):
             raise ValueError("preset must be a string")
     scenes = data.get("scenes")
@@ -126,19 +126,19 @@ def load_session_config(path: Path) -> dict[str, Any]:
                 raise ValueError(f"Invalid type for {key}")
             elif float in expected and not isfinite(float(value)):
                 raise ValueError(f"{key} must be finite")
-    for key, value in quest.items():
+    for key, value in headset.items():
         if key in {"cert", "key"}:
             if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"quest.{key} must be a path string")
-            quest[key] = str(_path(value, base))
+                raise ValueError(f"headset.{key} must be a path string")
+            headset[key] = str(_path(value, base))
         elif key in {"display_fps", "port"} and type(value) is not int:
-            raise ValueError(f"quest.{key} must be an integer")
-        elif key == "quest_input_fps" and type(value) not in (float, int):
-            raise ValueError("quest.quest_input_fps must be a number")
+            raise ValueError(f"headset.{key} must be an integer")
+        elif key == "headset_input_fps" and type(value) not in (float, int):
+            raise ValueError("headset.headset_input_fps must be a number")
         elif key in {"overlap_playback", "print_actions"} and type(value) is not bool:
-            raise ValueError(f"quest.{key} must be a boolean")
+            raise ValueError(f"headset.{key} must be a boolean")
         elif key in {"host", "video_transport"} and not isinstance(value, str):
-            raise ValueError(f"quest.{key} must be a string")
+            raise ValueError(f"headset.{key} must be a string")
     if "checkpoint" in runtime:
         checkpoint = runtime["checkpoint"]
         # Registry names and URIs retain their meaning; filesystem paths start at the repo root.

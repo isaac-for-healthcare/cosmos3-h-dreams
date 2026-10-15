@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Run with: node cosmos3_h_dreams/tests/test_quest_status.cjs
+// Run with: node cosmos3_h_dreams/tests/test_headset_status.cjs
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -33,7 +33,7 @@ const context = vm.createContext({
   },
   layer: { getViewport: () => ({ x: 0, y: 0, width: 100, height: 100 }) },
 });
-vm.runInContext(fs.readFileSync(path.join(__dirname, "../cosmos3_h_dreams/web/quest.js"), "utf8"), context);
+vm.runInContext(fs.readFileSync(path.join(__dirname, "../cosmos3_h_dreams/web/headset.js"), "utf8"), context);
 vm.runInContext("gl = testGL; quad = {}; statusQuad = {};", context);
 
 function checkFrame(expectedDraws) {

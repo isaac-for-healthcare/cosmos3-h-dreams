@@ -13,11 +13,11 @@ import pytest
 import yaml
 from cosmos3_h_dreams.app import Cosmos3HDreamsApplication
 from cosmos3_h_dreams.config import Cosmos3HDreamsConfig
-from cosmos3_h_dreams.quest_webrtc import LatestQuestFrames, QuestWebRTCServer
+from cosmos3_h_dreams.headset_webrtc import LatestHeadsetFrames, HeadsetWebRTCServer
 from cosmos3_h_dreams.session import Cosmos3HDreamsSession
 from cosmos3_h_dreams.session_config import load_session_config
 
-from cosmos3_h_dreams import quest_webrtc
+from cosmos3_h_dreams import headset_webrtc
 from cosmos3_h_dreams import session as session_module
 from cosmos3_h_dreams import session_config as session_config_module
 
@@ -31,7 +31,7 @@ def _session_file(tmp_path):
     path = tmp_path / "configs/session.yaml"
     data = {
         "runtime": {"preset": "base", "checkpoint": "./model.pt", "device": "cpu"},
-        "quest": {"preset": "quest-base", "cert": "cert.pem", "key": "key.pem"},
+        "headset": {"preset": "headset-base", "cert": "cert.pem", "key": "key.pem"},
         "scenes": [
             {
                 "name": "a",
@@ -51,7 +51,7 @@ def test_yaml_paths_and_scene_defaults(tmp_path, monkeypatch):
     monkeypatch.setattr(session_config_module, "REPO_ROOT", tmp_path)
     monkeypatch.chdir(path.parent)
     application = Cosmos3HDreamsApplication()
-    application.init(["--session-config", str(path), "--quest", "--fps", "12"])
+    application.init(["--session-config", str(path), "--headset", "--fps", "12"])
     assert list(application.scenes) == ["a", "b"]
     assert application.scene_labels == {"a": "Scene A", "b": "b"}
     assert application.scenes["a"].initial_frame == tmp_path / "a.png"
@@ -66,8 +66,8 @@ def test_yaml_paths_and_scene_defaults(tmp_path, monkeypatch):
     "change, match",
     [
         (lambda data: data["runtime"].update(chonk_size=2), "unknown runtime"),
-        (lambda data: data["quest"].update(preset=23), "preset must"),
-        (lambda data: data["quest"].update(display_fps=True), "integer"),
+        (lambda data: data["headset"].update(preset=23), "preset must"),
+        (lambda data: data["headset"].update(display_fps=True), "integer"),
         (lambda data: data["scenes"].append(dict(data["scenes"][0])), "unique"),
         (lambda data: data["scenes"][0].update(height=288), "unknown scene"),
         (lambda data: data["scenes"][0].update(domain_id=True), "Invalid type"),
@@ -89,13 +89,13 @@ def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch):
         sys,
         "argv",
         [
-            "quest_webrtc",
+            "headset_webrtc",
             "--session-config",
             str(path),
             "--config",
             "wan-taehv-chunk2-2steps-fademem-compile",
-            "--quest-config",
-            "quest-base",
+            "--headset-config",
+            "headset-base",
             "--display-fps",
             "17",
             "--fps",
@@ -104,18 +104,18 @@ def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch):
     )
     certificates = []
     monkeypatch.setattr(
-        quest_webrtc.ssl,
+        headset_webrtc.ssl,
         "SSLContext",
         lambda _: SimpleNamespace(
             load_cert_chain=lambda *args: certificates.append(args)
         ),
     )
-    monkeypatch.setattr(quest_webrtc, "create_app", lambda manager: manager)
+    monkeypatch.setattr(headset_webrtc, "create_app", lambda manager: manager)
     managers = []
     monkeypatch.setattr(
-        quest_webrtc.web, "run_app", lambda manager, **_: managers.append(manager)
+        headset_webrtc.web, "run_app", lambda manager, **_: managers.append(manager)
     )
-    quest_webrtc.main()
+    headset_webrtc.main()
     (manager,) = managers
     assert certificates == [(str(tmp_path / "cert.pem"), str(tmp_path / "key.pem"))]
     assert manager.display_fps == 17
@@ -146,7 +146,7 @@ def test_switch_keeps_model_changes_domain_and_recalibrates(tmp_path, monkeypatc
     )
     session = Cosmos3HDreamsSession(config=config)
     session._model, session._rollout, session._scene = model, rollout, object()
-    session._quest_source = SimpleNamespace(
+    session._headset_source = SimpleNamespace(
         set_normalizer=lambda path: calls.append(("normalizer", path))
     )
     monkeypatch.setattr(
@@ -175,9 +175,9 @@ def test_scene_request_wakes_idle_generation_and_handles_failure():
             if config is configs["a"]:
                 raise ValueError("bad scene")
 
-        manager = QuestWebRTCServer(
+        manager = HeadsetWebRTCServer(
             session=SimpleNamespace(switch_scene=switch),
-            frames=LatestQuestFrames(fps=10),
+            frames=LatestHeadsetFrames(fps=10),
             scenes=configs,
         )
         manager.runtime_ready = True
@@ -188,11 +188,11 @@ def test_scene_request_wakes_idle_generation_and_handles_failure():
             await asyncio.wait_for(manager.select_scene("b"), timeout=2)
             assert calls == ["wake", configs["b"]]
             assert manager.active_scene == "b" and manager._scene_request is None
-            with pytest.raises(quest_webrtc.web.HTTPInternalServerError):
+            with pytest.raises(headset_webrtc.web.HTTPInternalServerError):
                 await asyncio.wait_for(manager.select_scene("a"), timeout=2)
             assert manager.active_scene == "b"
             assert manager._scene_request is None
-            with pytest.raises(quest_webrtc.web.HTTPBadRequest):
+            with pytest.raises(headset_webrtc.web.HTTPBadRequest):
                 await manager.select_scene({"name": "a"})
         finally:
             manager._producer.cancel()
@@ -220,14 +220,14 @@ def test_switch_discards_inflight_output_and_flushes_video():
         async def flush():
             flushed.append(True)
 
-        manager = QuestWebRTCServer(
+        manager = HeadsetWebRTCServer(
             session=SimpleNamespace(
                 config=SimpleNamespace(fps=10),
                 next_step_requirements=lambda: SimpleNamespace(input_frame_count=1),
                 step=step,
                 switch_scene=switch,
             ),
-            frames=LatestQuestFrames(fps=10),
+            frames=LatestHeadsetFrames(fps=10),
             scenes={"a": object(), "b": object()},
         )
         manager.source = SimpleNamespace(request_restart=release.set)
@@ -266,8 +266,8 @@ def test_yaml_resolves_all_assets_from_repo_root(tmp_path, monkeypatch):
     assert resolved["scenes"][0]["actions"] == tmp_path / "data/actions.npy"
     assert resolved["scenes"][1]["initial_frame"] == tmp_path / "absolute.png"
     assert resolved["runtime"]["checkpoint"] == str(tmp_path / "model.pt")
-    assert resolved["quest"]["cert"] == str(tmp_path / "cert.pem")
-    assert resolved["quest"]["key"] == str(tmp_path / "key.pem")
+    assert resolved["headset"]["cert"] == str(tmp_path / "cert.pem")
+    assert resolved["headset"]["key"] == str(tmp_path / "key.pem")
 
 
 def test_initial_frame_wildcard_builds_named_scenes(tmp_path, monkeypatch):
@@ -281,7 +281,7 @@ def test_initial_frame_wildcard_builds_named_scenes(tmp_path, monkeypatch):
     ]
     path.write_text(yaml.safe_dump(data))
     application = Cosmos3HDreamsApplication()
-    application.init(["--session-config", str(path), "--quest"])
+    application.init(["--session-config", str(path), "--headset"])
     assert list(application.scenes) == ["a.png", "b.png"]
     assert application.scene_labels == {"a.png": "a.png", "b.png": "b.png"}
     assert application.scenes["a.png"].initial_frame == tmp_path / "a.png"

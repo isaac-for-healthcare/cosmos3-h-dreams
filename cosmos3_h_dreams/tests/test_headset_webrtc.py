@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""CPU contract check for LAN Quest samples reaching the 28D action encoder."""
+"""CPU contract check for LAN Headset samples reaching the 28D action encoder."""
 
 from __future__ import annotations
 
@@ -30,26 +30,26 @@ import numpy as np
 import pytest
 from aiohttp import MultipartReader
 from aiohttp.test_utils import TestClient, TestServer
-from cosmos3_h_dreams.quest import controller_frames_to_actions
-from cosmos3_h_dreams.quest_webrtc import (
-    LatestQuestFrames,
-    QuestWebRTCServer,
+from cosmos3_h_dreams.headset import controller_frames_to_actions
+from cosmos3_h_dreams.headset_webrtc import (
+    LatestHeadsetFrames,
+    HeadsetWebRTCServer,
     create_app,
 )
 
-from cosmos3_h_dreams import quest_webrtc as webrtc_module
+from cosmos3_h_dreams import headset_webrtc as webrtc_module
 
 pytestmark = pytest.mark.ci_cpu
 
 
 @pytest.mark.parametrize(
-    "quest_config, flags, input_fps, display_fps, transport, overlap, model_fps",
+    "headset_config, flags, input_fps, display_fps, transport, overlap, model_fps",
     [
-        ("quest-base", [], 30, 20, "mjpeg", True, 10),
+        ("headset-base", [], 30, 20, "mjpeg", True, 10),
         (
-            "quest-base",
+            "headset-base",
             [
-                "--quest-input-fps",
+                "--headset-input-fps",
                 "15",
                 "--display-fps",
                 "10",
@@ -68,10 +68,10 @@ pytestmark = pytest.mark.ci_cpu
         (None, [], 10, 30, "webrtc", True, 10),
     ],
 )
-def test_quest_preset_and_explicit_overrides(
+def test_headset_preset_and_explicit_overrides(
     tmp_path,
     monkeypatch,
-    quest_config,
+    headset_config,
     flags,
     input_fps,
     display_fps,
@@ -85,7 +85,7 @@ def test_quest_preset_and_explicit_overrides(
         sys,
         "argv",
         [
-            "quest_webrtc",
+            "headset_webrtc",
             "--config",
             "wan-taehv-chunk2-2steps-fademem-compile",
             "--cert",
@@ -96,7 +96,7 @@ def test_quest_preset_and_explicit_overrides(
             "/checkpoint",
             "--initial-frame",
             str(frame),
-            *(["--quest-config", quest_config] if quest_config is not None else []),
+            *(["--headset-config", headset_config] if headset_config is not None else []),
             *flags,
         ],
     )
@@ -133,7 +133,7 @@ def test_quest_preset_and_explicit_overrides(
     assert manager.display_fps == display_fps
     assert manager.video_transport == transport
     assert manager.overlap_playback is overlap
-    assert QuestWebRTCServer(
+    assert HeadsetWebRTCServer(
         session=manager.session, frames=manager.frames
     ).overlap_playback
 
@@ -157,9 +157,9 @@ def test_browser_absolute_poses_drive_translation_and_jaw_without_rotation(
 ) -> None:
     clock_ns = 1_000_000_000
     monkeypatch.setattr(
-        "cosmos3_h_dreams.quest_webrtc.time.perf_counter_ns", lambda: clock_ns
+        "cosmos3_h_dreams.headset_webrtc.time.perf_counter_ns", lambda: clock_ns
     )
-    source = LatestQuestFrames(fps=sample_fps)
+    source = LatestHeadsetFrames(fps=sample_fps)
 
     def push(left_y: float, right_y: float, right_trigger: float) -> None:
         assert source.push(
@@ -219,18 +219,18 @@ def test_display_fps_is_independent_of_action_fps(
             pass
 
     monkeypatch.setattr(webrtc_module, "RTCPeerConnection", FakePeer)
-    frames = LatestQuestFrames(fps=10)
+    frames = LatestHeadsetFrames(fps=10)
     session = SimpleNamespace(config=SimpleNamespace(fps=10), actions_per_step=16)
-    manager = QuestWebRTCServer(session=session, frames=frames, display_fps=30)
+    manager = HeadsetWebRTCServer(session=session, frames=frames, display_fps=30)
 
     async def check() -> None:
         try:
             await manager.answer("offer", "offer")
-            quest_track = manager.track
+            headset_track = manager.track
             await manager.answer_viewer("offer", "offer")
             assert frames._period_ns == 100_000_000
-            assert manager.track is quest_track
-            assert manager.viewer_track is not quest_track
+            assert manager.track is headset_track
+            assert manager.viewer_track is not headset_track
             assert manager.viewer_track is not None
             assert manager.track.fps == 30
         finally:
@@ -262,17 +262,17 @@ def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
     )
 
     async def check() -> None:
-        manager = QuestWebRTCServer(
+        manager = HeadsetWebRTCServer(
             session=session,
-            frames=LatestQuestFrames(fps=10),
+            frames=LatestHeadsetFrames(fps=10),
             video_transport="mjpeg",
             display_fps=30,
         )
         async with TestClient(TestServer(create_app(manager))) as client:
-            for path in ("/quest", "/viewer"):
+            for path in ("/headset", "/viewer"):
                 page = await client.get(path)
                 assert 'data-transport="mjpeg"' in await page.text()
-            for path in ("/quest/offer", "/viewer/offer"):
+            for path in ("/headset/offer", "/viewer/offer"):
                 response = await client.post(
                     path, json={"sdp": "offer", "type": "offer"}
                 )
@@ -350,13 +350,13 @@ def test_mjpeg_profile_measures_cycle_and_block_boundary(monkeypatch, capsys) ->
     monkeypatch.setattr(webrtc_module.time, "perf_counter", lambda: now)
     monkeypatch.setattr(webrtc_module, "encode_rgb_frame_to_jpeg", encode)
     requirements = iter([SimpleNamespace(input_frame_count=2)] * 2 + [None])
-    manager = QuestWebRTCServer(
+    manager = HeadsetWebRTCServer(
         session=SimpleNamespace(
             config=SimpleNamespace(fps=10, profile=True),
             next_step_requirements=lambda: next(requirements),
             step=step,
         ),
-        frames=LatestQuestFrames(fps=10),
+        frames=LatestHeadsetFrames(fps=10),
         display_fps=20,
         video_transport="mjpeg",
         overlap_playback=False,
@@ -413,13 +413,13 @@ def test_mjpeg_overlap_is_bounded_and_preserves_frame_order(monkeypatch, overlap
         monkeypatch.setattr(webrtc_module.asyncio, "to_thread", to_thread)
         monkeypatch.setattr(webrtc_module, "encode_rgb_frame_to_jpeg", encode)
         requirements = iter([SimpleNamespace(input_frame_count=2)] * 3 + [None])
-        manager = QuestWebRTCServer(
+        manager = HeadsetWebRTCServer(
             session=SimpleNamespace(
                 config=SimpleNamespace(fps=10, profile=False),
                 next_step_requirements=lambda: next(requirements),
                 step=step,
             ),
-            frames=LatestQuestFrames(fps=10),
+            frames=LatestHeadsetFrames(fps=10),
             display_fps=1000,
             video_transport="mjpeg",
             overlap_playback=overlap,
@@ -494,13 +494,13 @@ def test_mjpeg_overlap_discards_stale_playback(monkeypatch, transition):
         monkeypatch.setattr(webrtc_module.asyncio, "to_thread", to_thread)
         monkeypatch.setattr(webrtc_module, "encode_rgb_frame_to_jpeg", encode)
         requirements = iter([SimpleNamespace(input_frame_count=2)] * 2 + [None])
-        manager = QuestWebRTCServer(
+        manager = HeadsetWebRTCServer(
             session=SimpleNamespace(
                 config=SimpleNamespace(fps=10, profile=False),
                 next_step_requirements=lambda: next(requirements),
                 step=step,
             ),
-            frames=LatestQuestFrames(fps=10),
+            frames=LatestHeadsetFrames(fps=10),
             display_fps=1000,
             video_transport="mjpeg",
             overlap_playback=True,
@@ -551,7 +551,7 @@ def test_mjpeg_overlap_discards_stale_playback(monkeypatch, transition):
     asyncio.run(check())
 
 
-def test_generated_frames_reach_quest_and_viewer(
+def test_generated_frames_reach_headset_and_viewer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def inline(function, *args):
@@ -566,7 +566,7 @@ def test_generated_frames_reach_quest_and_viewer(
         next_step_requirements=lambda: next(requirements),
         step=lambda _window: result,
     )
-    manager = QuestWebRTCServer(session=session, frames=LatestQuestFrames(fps=10))
+    manager = HeadsetWebRTCServer(session=session, frames=LatestHeadsetFrames(fps=10))
 
     async def check() -> None:
         manager.socket = object()
@@ -587,7 +587,7 @@ def test_generated_frames_reach_quest_and_viewer(
 
 
 @pytest.mark.parametrize("namespace_package", [False, True])
-def test_quest_page_and_offer_boundary(monkeypatch, namespace_package) -> None:
+def test_headset_page_and_offer_boundary(monkeypatch, namespace_package) -> None:
     if namespace_package:
         package = sys.modules["cosmos3_h_dreams"]
         outer = str(Path(webrtc_module.__file__).resolve().parent.parent)
@@ -601,14 +601,14 @@ def test_quest_page_and_offer_boundary(monkeypatch, namespace_package) -> None:
             ),
         )
         monkeypatch.setattr(package, "__path__", [outer])
-        assert not files("cosmos3_h_dreams").joinpath("web/quest.html").is_file()
+        assert not files("cosmos3_h_dreams").joinpath("web/headset.html").is_file()
 
     class FakeManager:
         video_transport = "webrtc"
         runtime_ready = False
         socket = None
         source = None
-        frames = LatestQuestFrames(fps=10.0)
+        frames = LatestHeadsetFrames(fps=10.0)
         session = SimpleNamespace(model_status="Loading model…")
 
         async def start(self) -> None:
@@ -623,24 +623,24 @@ def test_quest_page_and_offer_boundary(monkeypatch, namespace_package) -> None:
     async def check() -> None:
         manager = FakeManager()
         async with TestClient(TestServer(create_app(manager))) as client:
-            page = await client.get("/quest")
+            page = await client.get("/headset")
             assert page.status == 200
             assert "Enter VR" in await page.text()
             assert 'id="model-status"' in await page.text()
             viewer = await client.get("/viewer")
             assert viewer.status == 200
-            assert "Live view of the Quest session" in await viewer.text()
+            assert "Live view of the headset session" in await viewer.text()
             viewer_script = await client.get("/viewer.js")
             assert viewer_script.status == 200
             assert "/viewer/offer" in await viewer_script.text()
             assert "/ws" not in await viewer_script.text()
-            script = await client.get("/quest.js")
+            script = await client.get("/headset.js")
             assert script.status == 200
             assert "xr_frame" in await script.text()
             scene_script = await client.get("/scenes.js")
             assert scene_script.status == 200
             offer = await client.post(
-                "/quest/offer", json={"sdp": "bad", "type": "offer"}
+                "/headset/offer", json={"sdp": "bad", "type": "offer"}
             )
             assert offer.status == 409
             viewer_offer = await client.post("/viewer/offer", json={"type": "answer"})
@@ -686,7 +686,7 @@ def test_model_startup_status_is_served_while_loading(fail):
             pass
 
     async def check():
-        manager = QuestWebRTCServer(session=Session(), frames=LatestQuestFrames(fps=10))
+        manager = HeadsetWebRTCServer(session=Session(), frames=LatestHeadsetFrames(fps=10))
         try:
             async with TestClient(TestServer(create_app(manager))) as client:
                 assert await asyncio.to_thread(entered.wait, 2)
@@ -694,13 +694,13 @@ def test_model_startup_status_is_served_while_loading(fail):
                 assert response.headers["Cache-Control"] == "no-store"
                 assert await response.json() == {
                     "ready": False,
-                    "quest_connected": False,
+                    "headset_connected": False,
                     "model_status": "Compiling model…",
                     "scenes": [],
                     "active_scene": None,
                     "scene_switching": False,
                 }
-                assert (await client.get("/quest")).status == 200
+                assert (await client.get("/headset")).status == 200
                 assert (await client.get("/viewer")).status == 200
                 release.set()
                 expected_status = (
@@ -744,7 +744,7 @@ def test_scene_gallery_serves_only_configured_frames(tmp_path):
 
     async def check():
         async with TestClient(TestServer(create_app(Manager()))) as client:
-            for page_name in ("quest", "viewer"):
+            for page_name in ("headset", "viewer"):
                 page = await (await client.get(f"/{page_name}")).text()
                 assert "Scene gallery" in page
                 assert '<dialog id="scene-gallery"' in page
@@ -771,7 +771,7 @@ def test_generation_failure_is_logged_and_reported(caplog):
             next_step_requirements=lambda: SimpleNamespace(input_frame_count=1),
             step=fail,
         )
-        manager = QuestWebRTCServer(session=session, frames=LatestQuestFrames(fps=10))
+        manager = HeadsetWebRTCServer(session=session, frames=LatestHeadsetFrames(fps=10))
         manager.track = object()
         manager.socket = object()
         manager.runtime_ready = True

@@ -1,6 +1,6 @@
 # Contributing to Cosmos3-H-Dreams
 
-Cosmos3-H-Dreams provides action replay and Meta Quest browser inference on
+Cosmos3-H-Dreams provides action replay and headset browser inference on
 FlashDreams. Contributions are licensed under [Apache-2.0](LICENSE).
 
 ## Submitting a pull request
@@ -55,7 +55,7 @@ With the environment installed, run the product and repository CPU checks:
 PYTHONPATH=cosmos3_h_dreams:flashdreams .venv/bin/python -m pytest \
   cosmos3_h_dreams/tests tests/test_dependency_policy.py tests/test_agent_skills.py \
   -m ci_cpu -q
-node cosmos3_h_dreams/tests/test_quest_status.cjs
+node cosmos3_h_dreams/tests/test_headset_status.cjs
 node cosmos3_h_dreams/tests/test_scene_selector.cjs
 uv lock --check
 ```

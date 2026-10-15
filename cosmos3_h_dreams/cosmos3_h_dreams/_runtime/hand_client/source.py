@@ -3,7 +3,7 @@
 
 """Input sources and the lifecycle that keeps the UI responsive while they start.
 
-A Quest stack can take minutes to come up: a relay process starts, a headset is
+A headset stack can take minutes to come up: a relay process starts, a headset is
 woken over ADB, and a browser has to enter immersive WebXR. Starting that on the
 UI thread would freeze the demo, so :class:`InputSourceManager` starts sources on
 a worker thread and reports ``PREPARING`` until they are ready.
@@ -45,7 +45,7 @@ class Observation:
     """One controller sample tagged with the source that produced it.
 
     Attributes:
-        frame: Controller state in the Quest wire schema, or ``None`` when the
+        frame: Controller state in the headset wire schema, or ``None`` when the
             source has no sample yet.
         capture_ns: Host capture time.
         source: Name of the producing source.
@@ -292,7 +292,7 @@ class InputSourceManager:
             self._fail(generation, error)
             return
         # Published before start() so close() can reach a source that is still
-        # coming up. Starting a Quest stack takes minutes, and that is exactly
+        # coming up. Starting a headset stack takes minutes, and that is exactly
         # when an operator interrupts; without this the external relay would be
         # orphaned and keep holding its port. Check the generation first in case
         # close() won the race while the factory was still constructing it.
@@ -568,7 +568,7 @@ def pace_tick(started: float, *, source_ready: bool) -> None:
 
     Two different budgets, because the two situations want opposite things.
     While a source is coming up the app only has to stay responsive, and
-    spinning would burn a core for the minutes a Quest stack can take. Once it
+    spinning would burn a core for the minutes a headset stack can take. Once it
     is running the budget is one frame.
 
     Sleeping the idle cadence unconditionally is what held the window under 30

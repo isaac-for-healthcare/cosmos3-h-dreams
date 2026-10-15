@@ -6,8 +6,8 @@ runtime:
   preset: wan-taehv-chunk2-2steps-fademem-compile
   checkpoint: data_local/checkpoints/model_2step.pt
 
-quest:
-  preset: quest-base
+headset:
+  preset: headset-base
   cert: cert.pem
   key: key.pem
   # Pass --cert and --key at launch, or put paths to them here.

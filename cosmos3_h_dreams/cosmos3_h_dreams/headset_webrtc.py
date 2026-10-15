@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Quest WebXR input and HTTPS/WebRTC video for the Cosmos3-H-Dreams session."""
+"""Headset WebXR input and HTTPS/WebRTC video for the Cosmos3-H-Dreams session."""
 
 from __future__ import annotations
 
@@ -38,29 +38,29 @@ from flashdreams.serving.realtime.media import encode_rgb_frame_to_jpeg
 from flashdreams.serving.webrtc.media import BufferedVideoTrack
 
 from cosmos3_h_dreams._runtime.hand_client.source import Observation
-from cosmos3_h_dreams._runtime.quest_controller import parse_xr_frame
+from cosmos3_h_dreams._runtime.headset_controller import parse_xr_frame
 
 from .app import Cosmos3HDreamsApplication
 from .config import COSMOS3_H_DREAMS_PRESETS, Cosmos3HDreamsConfig
-from .quest import QuestActionSource
+from .headset import HeadsetActionSource
 from .session import Cosmos3HDreamsSession
 from .session_config import load_session_config
 
 _WEB_DIR = Path(__file__).resolve().parent / "web"
 
-# Empirical left grip-to-pivot offset from the Quest X-rotation trace, in metres.
+# Empirical left grip-to-pivot offset from a Meta Quest controller X-rotation trace, in metres.
 _LEFT_GRIP_PIVOT_OFFSET_M = (0.0, -0.02415, -0.04658)
 
-QUEST_WEBRTC_PRESETS = {
-    "quest-base": {
-        "quest_input_fps": 30.0,
+HEADSET_WEBRTC_PRESETS = {
+    "headset-base": {
+        "headset_input_fps": 30.0,
         "display_fps": 20,
         "video_transport": "mjpeg",
     },
 }
 
 
-class LatestQuestFrames:
+class LatestHeadsetFrames:
     """Sample the newest validated pose, optionally limiting acquisition rate."""
 
     def __init__(self, *, fps: float | None) -> None:
@@ -121,17 +121,17 @@ class LatestQuestFrames:
             frame = self._latest
             self._sampled_version = self._version
             self._next_sample_ns = now_ns + self._period_ns
-        return Observation(frame=frame, capture_ns=now_ns, source="quest-webrtc")
+        return Observation(frame=frame, capture_ns=now_ns, source="headset-webrtc")
 
 
-class QuestWebRTCServer:
-    """Bind one Quest browser to the existing model session and video track."""
+class HeadsetWebRTCServer:
+    """Bind one headset browser to the existing model session and video track."""
 
     def __init__(
         self,
         *,
         session: Cosmos3HDreamsSession,
-        frames: LatestQuestFrames,
+        frames: LatestHeadsetFrames,
         display_fps: int = 30,
         video_transport: str = "webrtc",
         overlap_playback: bool = True,
@@ -154,7 +154,7 @@ class QuestWebRTCServer:
         self._jpeg: bytes | None = None
         self._jpeg_version = 0
         self._jpeg_changed = asyncio.Condition()
-        self.source: QuestActionSource | None = None
+        self.source: HeadsetActionSource | None = None
         self.peer: RTCPeerConnection | None = None
         self.track: BufferedVideoTrack | None = None
         self.viewer_peer: RTCPeerConnection | None = None
@@ -222,7 +222,7 @@ class QuestWebRTCServer:
             await peer.close()
 
     async def answer(self, sdp: str, offer_type: str) -> dict[str, str]:
-        """Negotiate a fresh video peer for the active Quest socket."""
+        """Negotiate a fresh video peer for the active headset socket."""
         await self.close_peer()
         track = BufferedVideoTrack(
             fps=self.display_fps,
@@ -499,7 +499,7 @@ class QuestWebRTCServer:
             finished = time.perf_counter()
             metrics = result.metrics
             print(
-                f"[quest-mjpeg] step={result.step_index} frames={len(frames)} "
+                f"[headset-mjpeg] step={result.step_index} frames={len(frames)} "
                 f"input={metrics['input_s'] * 1e3:.1f}ms "
                 f"model={metrics['model_wall_s'] * 1e3:.1f}ms "
                 f"decode={metrics['decode_s'] * 1e3:.1f}ms "
@@ -516,12 +516,12 @@ class QuestWebRTCServer:
             )
 
 
-def create_app(manager: QuestWebRTCServer) -> web.Application:
+def create_app(manager: HeadsetWebRTCServer) -> web.Application:
     """Serve the headset page, controller socket, and selected video transport."""
     app = web.Application(client_max_size=64 * 1024)
 
     async def page(_: web.Request) -> web.Response:
-        body = (_WEB_DIR / "quest.html").read_text()
+        body = (_WEB_DIR / "headset.html").read_text()
         if manager.video_transport == "mjpeg":
             body = body.replace(
                 '<video id="video" autoplay muted playsinline></video>',
@@ -534,7 +534,7 @@ def create_app(manager: QuestWebRTCServer) -> web.Application:
         )
 
     async def script(_: web.Request) -> web.Response:
-        body = (_WEB_DIR / "quest.js").read_text()
+        body = (_WEB_DIR / "headset.js").read_text()
         return web.Response(
             text=body,
             content_type="text/javascript",
@@ -574,7 +574,7 @@ def create_app(manager: QuestWebRTCServer) -> web.Application:
         if manager.video_transport == "mjpeg":
             raise web.HTTPConflict(reason="Video uses MJPEG; open /video")
         if manager.socket is None:
-            raise web.HTTPConflict(reason="Open the Quest controller socket first")
+            raise web.HTTPConflict(reason="Open the headset controller socket first")
         try:
             payload = await request.json()
             sdp, offer_type = payload["sdp"], payload["type"]
@@ -598,7 +598,7 @@ def create_app(manager: QuestWebRTCServer) -> web.Application:
 
     async def socket(request: web.Request) -> web.WebSocketResponse:
         if manager.socket is not None:
-            raise web.HTTPConflict(reason="A Quest browser is already connected")
+            raise web.HTTPConflict(reason="A Headset browser is already connected")
         ws = web.WebSocketResponse(max_msg_size=64 * 1024, heartbeat=5.0)
         await ws.prepare(request)
         manager.socket = ws
@@ -699,7 +699,7 @@ def create_app(manager: QuestWebRTCServer) -> web.Application:
         return web.json_response(
             {
                 "ready": manager.runtime_ready,
-                "quest_connected": manager.socket is not None,
+                "headset_connected": manager.socket is not None,
                 "model_status": manager.session.model_status,
                 "scenes": [
                     {"name": name, "label": manager.scene_labels.get(name, name)}
@@ -711,14 +711,14 @@ def create_app(manager: QuestWebRTCServer) -> web.Application:
             headers={"Cache-Control": "no-store"},
         )
 
-    app.router.add_get("/quest", page)
-    app.router.add_get("/quest.js", script)
+    app.router.add_get("/headset", page)
+    app.router.add_get("/headset.js", script)
     app.router.add_get("/scenes.js", scene_script)
     app.router.add_get("/viewer", viewer_page)
     app.router.add_get("/viewer.js", viewer_script)
     app.router.add_get("/ws", socket)
     app.router.add_get("/video", video)
-    app.router.add_post("/quest/offer", offer)
+    app.router.add_post("/headset/offer", offer)
     app.router.add_post("/viewer/offer", viewer_offer)
     app.router.add_get("/healthz", health)
     app.router.add_post("/scene", select_scene)
@@ -737,9 +737,9 @@ def create_app(manager: QuestWebRTCServer) -> web.Application:
 
 
 def main() -> None:
-    """Start the independent HTTPS Quest flow with the shared model options."""
+    """Start the independent HTTPS Headset flow with the shared model options."""
     selector = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
-    selector.add_argument("--quest-config", choices=QUEST_WEBRTC_PRESETS)
+    selector.add_argument("--headset-config", choices=HEADSET_WEBRTC_PRESETS)
     selector.add_argument("--session-config", type=Path)
     selected, _ = selector.parse_known_args()
     session_data = (
@@ -747,13 +747,13 @@ def main() -> None:
         if selected.session_config
         else None
     )
-    quest_defaults = dict((session_data or {}).get("quest", {}))
-    quest_preset = selected.quest_config or quest_defaults.pop("preset", None)
-    if quest_preset not in {None, *QUEST_WEBRTC_PRESETS}:
-        selector.error(f"unknown Quest preset: {quest_preset}")
+    headset_defaults = dict((session_data or {}).get("headset", {}))
+    headset_preset = selected.headset_config or headset_defaults.pop("preset", None)
+    if headset_preset not in {None, *HEADSET_WEBRTC_PRESETS}:
+        selector.error(f"unknown headset preset: {headset_preset}")
     parser = argparse.ArgumentParser(
         description=(
-            "Serve Cosmos3-H-Dreams to Quest Browser over HTTPS with MJPEG or WebRTC "
+            "Serve Cosmos3-H-Dreams to a headset browser over HTTPS with MJPEG or WebRTC "
             "connection."
         ),
         epilog=(
@@ -763,17 +763,17 @@ def main() -> None:
     )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8443)
-    parser.add_argument("--cert", required="cert" not in quest_defaults)
-    parser.add_argument("--key", required="key" not in quest_defaults)
+    parser.add_argument("--cert", required="cert" not in headset_defaults)
+    parser.add_argument("--key", required="key" not in headset_defaults)
     parser.add_argument("--config", choices=COSMOS3_H_DREAMS_PRESETS)
-    parser.add_argument("--quest-config", choices=QUEST_WEBRTC_PRESETS)
+    parser.add_argument("--headset-config", choices=HEADSET_WEBRTC_PRESETS)
     parser.add_argument("--display-fps", type=int, default=30)
     parser.add_argument(
         "--video-transport", choices=("webrtc", "mjpeg"), default="webrtc"
     )
     parser.add_argument("--print-actions", action="store_true")
     parser.add_argument(
-        "--quest-input-fps",
+        "--headset-input-fps",
         type=float,
         help="Acquire measured action windows at this rate, independently of model --fps",
     )
@@ -783,9 +783,9 @@ def main() -> None:
         default=True,
         help="Generate the next MJPEG block while playing the current block",
     )
-    quest_defaults.pop("preset", None)
-    parser.set_defaults(**QUEST_WEBRTC_PRESETS.get(quest_preset, {}))
-    parser.set_defaults(**quest_defaults)
+    headset_defaults.pop("preset", None)
+    parser.set_defaults(**HEADSET_WEBRTC_PRESETS.get(headset_preset, {}))
+    parser.set_defaults(**headset_defaults)
     network, model_args = parser.parse_known_args()
     if network.video_transport not in {"webrtc", "mjpeg"}:
         parser.error("video_transport must be webrtc or mjpeg")
@@ -793,10 +793,10 @@ def main() -> None:
         parser.error("--port must be between 1 and 65535")
     if network.display_fps <= 0:
         parser.error("--display-fps must be positive")
-    if network.quest_input_fps is not None and (
-        not math.isfinite(network.quest_input_fps) or network.quest_input_fps <= 0
+    if network.headset_input_fps is not None and (
+        not math.isfinite(network.headset_input_fps) or network.headset_input_fps <= 0
     ):
-        parser.error("--quest-input-fps must be finite and positive")
+        parser.error("--headset-input-fps must be finite and positive")
     application = Cosmos3HDreamsApplication()
     model_defaults = (
         ["--config", network.config]
@@ -814,17 +814,17 @@ def main() -> None:
             "512",
         ]
     )
-    application.init(["--quest", *model_defaults, *model_args])
+    application.init(["--headset", *model_defaults, *model_args])
     session = application.create_session()
     config = session.config
     input_fps = (
-        network.quest_input_fps if network.quest_input_fps is not None else config.fps
+        network.headset_input_fps if network.headset_input_fps is not None else config.fps
     )
-    frames = LatestQuestFrames(fps=input_fps)
-    manager: QuestWebRTCServer
+    frames = LatestHeadsetFrames(fps=input_fps)
+    manager: HeadsetWebRTCServer
 
-    def source_factory(**kwargs: Any) -> QuestActionSource:
-        source = QuestActionSource(
+    def source_factory(**kwargs: Any) -> HeadsetActionSource:
+        source = HeadsetActionSource(
             **kwargs,
             max_buffered_frames=config.chunk_size * 4 + 1,
             pivot_offsets={"left": _LEFT_GRIP_PIVOT_OFFSET_M},
@@ -835,9 +835,9 @@ def main() -> None:
         return source
 
     if any(scene.actions is not None for scene in application.scenes.values()):
-        parser.error("Quest server scenes must use live controller input, not actions")
-    session = Cosmos3HDreamsSession(config=config, quest_source_factory=source_factory)
-    manager = QuestWebRTCServer(
+        parser.error("Headset server scenes must use live controller input, not actions")
+    session = Cosmos3HDreamsSession(config=config, headset_source_factory=source_factory)
+    manager = HeadsetWebRTCServer(
         session=session,
         frames=frames,
         display_fps=network.display_fps,
@@ -848,19 +848,19 @@ def main() -> None:
     )
     if config.normalizer is None:
         print(
-            "[quest-webrtc] no checkpoint normalizer supplied; "
+            "[headset-webrtc] no checkpoint normalizer supplied; "
             "live action magnitudes are unverified"
         )
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls.load_cert_chain(network.cert, network.key)
     print(
-        f"[quest-webrtc] action/model rate: {config.fps:g} Hz; "
+        f"[headset-webrtc] action/model rate: {config.fps:g} Hz; "
         f"acquisition: {'browser rate' if input_fps is None else str(input_fps) + ' Hz'}; "
         f"actions: recorded window; "
         f"video presentation: {network.display_fps} fps; "
         f"transport: {network.video_transport}; overlap playback: {network.overlap_playback}"
     )
-    print(f"Open https://<workstation-LAN-IP>:{network.port}/quest in Quest Browser")
+    print(f"Open https://<workstation-LAN-IP>:{network.port}/headset in the headset browser")
     print(f"Open https://<workstation-LAN-IP>:{network.port}/viewer on a PC")
     web.run_app(
         create_app(manager), host=network.host, port=network.port, ssl_context=tls

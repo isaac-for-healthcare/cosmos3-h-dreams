@@ -31,7 +31,7 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 
 # Cosmos3-H-Dreams Agent Guide
 
-Cosmos3-H-Dreams provides action-replay and Meta Quest browser inference on top of
+Cosmos3-H-Dreams provides action-replay and headset browser inference on top of
 FlashDreams. Default to source inspection, configuration checks and CPU tests.
 Run GPU generation, checkpoint downloads or live headset workflows only when the
 user requests them.
@@ -41,7 +41,7 @@ user requests them.
 - `cosmos3_h_dreams/cosmos3_h_dreams/`: product Python package. `app.py`, `config.py`
   and `session.py` manage application configuration and inference sessions;
   `model.py` adapts the model; `_runtime/` owns the model, cache, checkpoint and
-  VAE implementation; `quest_webrtc.py` and `web/` serve the HTTPS browser flow.
+  VAE implementation; `headset_webrtc.py` and `web/` serve the HTTPS browser flow.
 - `cosmos3_h_dreams/configs/`: session presets and example configuration.
 - `cosmos3_h_dreams/tests/`: product tests, including browser JavaScript checks.
 - `flashdreams/`: shared framework dependency. Do not modify or delete its files
@@ -64,8 +64,8 @@ part of routine cleanup. Session asset paths resolve from the launch directory.
 
 ## Product boundaries
 
-- Preserve action replay and HTTPS Quest Browser/WebXR input and video streaming.
-- Keyboard control, native Quest APK support and the managed ADB launcher were
+- Preserve action replay and HTTPS headset browser/WebXR input and video streaming.
+- Keyboard control, native Headset APK support and the managed ADB launcher were
   removed. Do not reintroduce them without a request.
 - Browser resources must be packaged with the Python module and work both from
   the repository root and an installed wheel.
@@ -90,7 +90,7 @@ uv sync --package flashdreams-cosmos3-h-dreams --locked
 PYTHONPATH=cosmos3_h_dreams:flashdreams .venv/bin/python -m pytest \
   cosmos3_h_dreams/tests tests/test_dependency_policy.py tests/test_agent_skills.py \
   -m ci_cpu -q
-node cosmos3_h_dreams/tests/test_quest_status.cjs
+node cosmos3_h_dreams/tests/test_headset_status.cjs
 node cosmos3_h_dreams/tests/test_scene_selector.cjs
 
 # Metadata and package validation.

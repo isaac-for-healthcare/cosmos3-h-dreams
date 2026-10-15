@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Command-line application for replay and Quest generation."""
+"""Command-line application for replay and headset generation."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ class Cosmos3HDreamsApplication(IFlashDreamsApplication):
 
     @property
     def input_schema(self) -> CanonicalInputSchema:
-        """Declare the empty host-input contract for replay and Quest."""
+        """Declare the empty host-input contract for replay and headset."""
         return CanonicalInputSchema(modalities=())
 
     @property
@@ -77,25 +77,25 @@ class Cosmos3HDreamsApplication(IFlashDreamsApplication):
         parser.add_argument("--initial-frame", type=Path)
         input_group = parser.add_mutually_exclusive_group(required=True)
         input_group.add_argument("--actions", type=Path)
-        input_group.add_argument("--quest", action="store_true")
+        input_group.add_argument("--headset", action="store_true")
         parser.add_argument("--domain-id", default=COSMOS_H_DOMAIN_ID, type=int)
         parser.add_argument("--prompt", default=DEFAULT_PROMPT)
         parser.add_argument("--normalizer", type=Path)
-        parser.add_argument("--quest-transport", choices=("webxr",), default="webxr")
-        parser.add_argument("--quest-relay-url")
-        parser.add_argument("--quest-port", type=int, default=8444)
+        parser.add_argument("--headset-transport", choices=("webxr",), default="webxr")
+        parser.add_argument("--headset-relay-url")
+        parser.add_argument("--headset-port", type=int, default=8444)
         parser.add_argument(
-            "--quest-startup-timeout",
-            dest="quest_startup_timeout_s",
-            metavar="QUEST_STARTUP_TIMEOUT",
+            "--headset-startup-timeout",
+            dest="headset_startup_timeout_s",
+            metavar="HEADSET_STARTUP_TIMEOUT",
             type=float,
             default=300.0,
         )
         parser.add_argument(
-            "--quest-manual-xr", action=argparse.BooleanOptionalAction, default=False
+            "--headset-manual-xr", action=argparse.BooleanOptionalAction, default=False
         )
-        parser.add_argument("--quest-jaw-open", type=float, default=1.0)
-        parser.add_argument("--quest-jaw-closed", type=float, default=-2.0)
+        parser.add_argument("--headset-jaw-open", type=float, default=1.0)
+        parser.add_argument("--headset-jaw-closed", type=float, default=-2.0)
         parser.add_argument("--credential-path")
         parser.add_argument("--device", default="cuda:0")
         parser.add_argument(

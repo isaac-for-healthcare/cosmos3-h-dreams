@@ -77,7 +77,7 @@ def test_application_accepts_denoise_optimization_flags(tmp_path) -> None:
             "/checkpoint",
             "--initial-frame",
             str(frame),
-            "--quest",
+            "--headset",
             "--cache-mode",
             "block",
             "--overlap-cache-update",
@@ -119,7 +119,7 @@ def test_application_rejects_invalid_optimization_flags(tmp_path, flags, match) 
                 "/checkpoint",
                 "--initial-frame",
                 str(frame),
-                "--quest",
+                "--headset",
                 *flags,
             ]
         )
@@ -173,7 +173,7 @@ def test_without_config_keeps_required_inputs_explicit(tmp_path) -> None:
     Image.new("RGB", (32, 32)).save(frame)
 
     with pytest.raises(SystemExit):
-        Cosmos3HDreamsApplication().init(["--initial-frame", str(frame), "--quest"])
+        Cosmos3HDreamsApplication().init(["--initial-frame", str(frame), "--headset"])
 
 
 def test_named_config_supplies_checkpoint_and_initial_frame(
@@ -185,7 +185,7 @@ def test_named_config_supplies_checkpoint_and_initial_frame(
     monkeypatch.setitem(COSMOS3_H_DREAMS_PRESETS["base"], "initial_frame", frame)
     application = Cosmos3HDreamsApplication()
 
-    application.init(["--config", "base", "--quest"])
+    application.init(["--config", "base", "--headset"])
 
     config = application.create_session().config
     assert config.checkpoint == "/checkpoint"
@@ -198,7 +198,7 @@ def test_named_config_rejects_misspelled_option(
     monkeypatch.setitem(COSMOS3_H_DREAMS_PRESETS["base"], "chonk_size", 4)
 
     with pytest.raises(SystemExit) as error:
-        Cosmos3HDreamsApplication().init(["--config", "base", "--quest"])
+        Cosmos3HDreamsApplication().init(["--config", "base", "--headset"])
     assert error.value.code == 2
 
 
@@ -215,7 +215,7 @@ def test_explicit_boolean_flags_can_restore_eager_cache(tmp_path) -> None:
             "/checkpoint",
             "--initial-frame",
             str(frame),
-            "--quest",
+            "--headset",
             "--cache-mode",
             "cat",
             "--no-compile-denoise",
@@ -242,7 +242,7 @@ def test_fademem_cli_controls(tmp_path, selection) -> None:
             "/checkpoint",
             "--initial-frame",
             str(frame),
-            "--quest",
+            "--headset",
             "--cache-mode",
             "fademem",
             "--fademem-slots",
@@ -280,7 +280,7 @@ def test_application_rejects_removed_keyboard_option(tmp_path, capsys) -> None:
                 "/checkpoint",
                 "--initial-frame",
                 str(frame),
-                "--quest",
+                "--headset",
                 "--keyboard",
             ]
         )

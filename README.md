@@ -6,11 +6,11 @@ SPDX-License-Identifier: Apache-2.0
 # Cosmos3-H-Dreams
 
 Action-conditioned surgical video simulation with recorded action replay and
-live Meta Quest controller input, built on [FlashDreams](https://github.com/NVIDIA/flashdreams).
+live headset controller input, built on [FlashDreams](https://github.com/NVIDIA/flashdreams).
 
 Starting from a surgical scene image, Cosmos3-H-Dreams generates video in chunks
 conditioned on instrument actions. Replay recorded actions to an MP4, or control
-the simulation from Quest Browser and watch the output on the headset or a PC.
+the simulation from a headset browser and watch the output on the headset or a PC.
 
 ## Quick Start
 
@@ -34,24 +34,24 @@ Place your checkpoint at `data_local/checkpoints/model.pt` and scene PNGs under
 [real-time configuration](cosmos3_h_dreams/configs/real_time_2steps.yaml) uses the available example data in [example_data/scenes](./assets/example_data/scenes/); edit
 that file if your assets live elsewhere.
 
-For Quest Browser, generate an HTTPS certificate. Replace `<server-LAN-IP>`
+For the headset browser, generate an HTTPS certificate. Replace `<server-LAN-IP>`
 with the server address reachable from the headset:
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -nodes \
   -keyout key.pem -out cert.pem -days 365 \
-  -subj "/CN=quest" -addext "subjectAltName=IP:<server-LAN-IP>"
+  -subj "/CN=headset" -addext "subjectAltName=IP:<server-LAN-IP>"
 ```
 
 ### 3. Start the simulation
 
 ```bash
 uv run --no-sync --package flashdreams-cosmos3-h-dreams \
-  python -m cosmos3_h_dreams.quest_webrtc \
+  python -m cosmos3_h_dreams.headset_webrtc \
   --session-config cosmos3_h_dreams/configs/real_time_2steps.yaml
 ```
 
-Open `https://<server-LAN-IP>:8443/quest` in Quest Browser, accept the certificate
+Open `https://<server-LAN-IP>:8443/headset` in the headset browser, accept the certificate
 warning, and select **Enter VR**. Wait for model loading and compilation, then
 track both controllers, release the triggers, and hold still for calibration.
 Open `https://<server-LAN-IP>:8443/viewer` on a PC to watch the same simulation.
@@ -64,7 +64,7 @@ For recorded actions and MP4 output, see [offline replay](cosmos3_h_dreams/READM
 
 ## Documentation
 
-- [Setup and usage](cosmos3_h_dreams/README.md): assets, replay, Quest controls,
+- [Setup and usage](cosmos3_h_dreams/README.md): assets, replay, headset controls,
   session configuration, transport, and performance options.
 - [Inference presets](cosmos3_h_dreams/README.md#inference-presets): decoder,
   chunk size, denoising, and cache choices.
@@ -82,7 +82,7 @@ For recorded actions and MP4 output, see [offline replay](cosmos3_h_dreams/READM
 | Package manager | uv 0.11.8 or newer; use the committed lockfile |
 | CUDA environment | Driver compatible with the installed PyTorch CUDA build; the workspace defaults to CUDA 13 |
 | Replay output | `ffmpeg` available on `PATH` for MP4 output |
-| Live control | Meta Quest headset with Quest Browser and tracked controllers; HTTPS access to the server |
+| Live control | Headset with a WebXR-compatible browser and two tracked controllers; HTTPS access to the server |
 | Assets | Compatible checkpoint and initial frame; `[N, 28]` action array for replay |
 
 First use may download tokenizer and decoder assets. Allow storage for these,
