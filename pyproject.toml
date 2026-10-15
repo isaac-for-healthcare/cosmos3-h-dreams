@@ -1,7 +1,7 @@
 [tool.uv.workspace]
 members = [
     "flashdreams",
-    "cosmos_h_dreams",
+    "cosmos3_h_dreams",
 ]
 
 # Override nvidia-cublas to >=13.4 because transformer-engine-cu13 2.14.0 was
@@ -42,7 +42,7 @@ exclude = ["flashdreams/flashdreams/accelerated/multi_head_attention/triton/**",
 ignore = ["flashdreams/flashdreams/accelerated/multi_head_attention/triton/**", "flashdreams/flashdreams/accelerated/quantization/triton.py"]
 extraPaths = [
     "flashdreams",
-    "cosmos_h_dreams",
+    "cosmos3_h_dreams",
 ]
 # For pyright to pickup the correct python.
 venvPath = "."
@@ -55,7 +55,7 @@ reportIncompatibleVariableOverride = "none"
 python-version = "3.12"
 extra-paths = [
     "flashdreams",
-    "cosmos_h_dreams",
+    "cosmos3_h_dreams",
 ]
 
 [tool.ty.rules]

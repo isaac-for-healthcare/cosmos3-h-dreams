@@ -17,21 +17,21 @@ FlashDreams. Contributions are licensed under [Apache-2.0](LICENSE).
 
 | Path | Purpose |
 | --- | --- |
-| `cosmos_h_dreams/cosmos_h_dreams/` | Product application, model runtime, and HTTPS browser flow |
-| `cosmos_h_dreams/configs/` | Session presets and example configuration |
-| `cosmos_h_dreams/tests/` | Product Python and browser tests |
+| `cosmos3_h_dreams/cosmos3_h_dreams/` | Product application, model runtime, and HTTPS browser flow |
+| `cosmos3_h_dreams/configs/` | Session presets and example configuration |
+| `cosmos3_h_dreams/tests/` | Product Python and browser tests |
 | `flashdreams/` | Included framework dependency |
 | `tests/` | Repository checks and framework test utilities |
 | `scripts/benchmark/` | Framework benchmark and plotting tools |
 | `skills/` | Task-specific agent guidance |
 
-Put product behavior and tests in `cosmos_h_dreams/`. The product depends on
+Put product behavior and tests in `cosmos3_h_dreams/`. The product depends on
 FlashDreams; the framework must not depend on the product. Keep framework
 changes separate and agree their scope with the maintainer before making them.
 
 The release name is Cosmos3-H-Dreams. The distribution remains
-`flashdreams-cosmos-h-dreams`, the Python import is `cosmos_h_dreams`, and the
-application entry point is `cosmos-h-dreams`.
+`flashdreams-cosmos3-h-dreams`, the Python import is `cosmos3_h_dreams`, and the
+application entry point is `cosmos3-h-dreams`.
 
 ## Development and testing
 
@@ -41,7 +41,7 @@ has no compatible wheel. Install the product and test tooling from the workspace
 root:
 
 ```bash
-uv sync --package flashdreams-cosmos-h-dreams --group test --locked
+uv sync --package flashdreams-cosmos3-h-dreams --group test --locked
 ```
 
 The browser JavaScript checks require Node.js 14.18.0 or newer; use a currently
@@ -52,11 +52,11 @@ Node.js is test tooling; inference runs in Python.
 With the environment installed, run the product and repository CPU checks:
 
 ```bash
-PYTHONPATH=cosmos_h_dreams:flashdreams .venv/bin/python -m pytest \
-  cosmos_h_dreams/tests tests/test_dependency_policy.py tests/test_agent_skills.py \
+PYTHONPATH=cosmos3_h_dreams:flashdreams .venv/bin/python -m pytest \
+  cosmos3_h_dreams/tests tests/test_dependency_policy.py tests/test_agent_skills.py \
   -m ci_cpu -q
-node cosmos_h_dreams/tests/test_quest_status.cjs
-node cosmos_h_dreams/tests/test_scene_selector.cjs
+node cosmos3_h_dreams/tests/test_quest_status.cjs
+node cosmos3_h_dreams/tests/test_scene_selector.cjs
 uv lock --check
 ```
 
@@ -111,7 +111,7 @@ upstream attribution:
 
 ## Dependencies and release metadata
 
-Declare product runtime dependencies in `cosmos_h_dreams/pyproject.toml`. Keep
+Declare product runtime dependencies in `cosmos3_h_dreams/pyproject.toml`. Keep
 test tooling in development extras or dependency groups. Update `uv.lock` and
 [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) alongside dependency changes.
 The locked versions define the reproducible environment; minimum version bounds

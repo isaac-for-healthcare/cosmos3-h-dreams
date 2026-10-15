@@ -24,14 +24,14 @@ With Python 3.12, [uv](https://docs.astral.sh/uv/getting-started/installation/),
 and a compatible NVIDIA GPU environment available:
 
 ```bash
-uv sync --package flashdreams-cosmos-h-dreams --locked
+uv sync --package flashdreams-cosmos3-h-dreams --locked
 ```
 
 ### 2. Prepare the session
 
 Place your checkpoint at `data_local/checkpoints/model.pt` and scene PNGs under
 `data_local/scenes/`. The bundled
-[real-time configuration](cosmos_h_dreams/configs/real_time_2steps.yaml) uses the available example data in [example_data/scenes](./assets/example_data/scenes/); edit
+[real-time configuration](cosmos3_h_dreams/configs/real_time_2steps.yaml) uses the available example data in [example_data/scenes](./assets/example_data/scenes/); edit
 that file if your assets live elsewhere.
 
 For Quest Browser, generate an HTTPS certificate. Replace `<server-LAN-IP>`
@@ -46,9 +46,9 @@ openssl req -x509 -newkey rsa:2048 -nodes \
 ### 3. Start the simulation
 
 ```bash
-uv run --no-sync --package flashdreams-cosmos-h-dreams \
-  python -m cosmos_h_dreams.quest_webrtc \
-  --session-config cosmos_h_dreams/configs/real_time_2steps.yaml
+uv run --no-sync --package flashdreams-cosmos3-h-dreams \
+  python -m cosmos3_h_dreams.quest_webrtc \
+  --session-config cosmos3_h_dreams/configs/real_time_2steps.yaml
 ```
 
 Open `https://<server-LAN-IP>:8443/quest` in Quest Browser, accept the certificate
@@ -60,13 +60,13 @@ The example uses two denoising steps, TAEHV decoding, compiled FadeMem caching,
 and HTTPS/MJPEG video. Add `--video-transport webrtc` to use WebRTC video.
 Initial compilation takes longer than subsequent generation.
 
-For recorded actions and MP4 output, see [offline replay](cosmos_h_dreams/README.md#offline-replay).
+For recorded actions and MP4 output, see [offline replay](cosmos3_h_dreams/README.md#offline-replay).
 
 ## Documentation
 
-- [Setup and usage](cosmos_h_dreams/README.md): assets, replay, Quest controls,
+- [Setup and usage](cosmos3_h_dreams/README.md): assets, replay, Quest controls,
   session configuration, transport, and performance options.
-- [Inference presets](cosmos_h_dreams/README.md#inference-presets): decoder,
+- [Inference presets](cosmos3_h_dreams/README.md#inference-presets): decoder,
   chunk size, denoising, and cache choices.
 - [Contributing](CONTRIBUTING.md): development setup and tests.
 - [Development and packaging](DEV.md): versions and local distribution builds.
@@ -91,7 +91,7 @@ use and throughput depend on resolution, chunk size, cache, and decoder settings
 
 ## Resources
 
-- [Cosmos-H-Dreams HF](https://huggingface.co/nvidia/Cosmos-H-Dreams): Cosmos-H-Dreams model repository on Hugging Face.
+- [Cosmos3-H-Dreams HF](https://huggingface.co/nvidia/Cosmos3-H-Dreams): model repository for the previous version.
 - [Cosmos3-H-Embodied-Nano](): Base model for Cosmos3-H-Dreams.
 - [FlashDreams](https://github.com/NVIDIA/flashdreams): Underlying inference and serving framework.
 - [Open-H-Dataset](https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Open-H-Embodiment): Multi-embodiment surgical dataset used for training.

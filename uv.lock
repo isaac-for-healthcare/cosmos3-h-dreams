@@ -22,7 +22,7 @@ conflicts = [[
 [manifest]
 members = [
     "flashdreams",
-    "flashdreams-cosmos-h-dreams",
+    "flashdreams-cosmos3-h-dreams",
 ]
 overrides = [
     { name = "anyio", specifier = ">=4.14.2" },
@@ -889,9 +889,9 @@ cuda13 = [
 ]
 
 [[package]]
-name = "flashdreams-cosmos-h-dreams"
+name = "flashdreams-cosmos3-h-dreams"
 version = "0.1.0"
-source = { editable = "cosmos_h_dreams" }
+source = { editable = "cosmos3_h_dreams" }
 dependencies = [
     { name = "flashdreams", extra = ["serving"] },
     { name = "pillow" },

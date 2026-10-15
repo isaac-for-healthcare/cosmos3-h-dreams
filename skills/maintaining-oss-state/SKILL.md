@@ -22,8 +22,8 @@ Paths below are relative to the repository root.
 | `THIRD-PARTY-NOTICES` | Runtime dependency attribution, selected optional/development components, and source redistribution disclosures |
 | `REUSE.toml` | Copyright and license annotations for files without inline headers and any upstream-specific overrides |
 | `CONTRIBUTING.md` | Contribution terms, verbatim DCO text, and sign-off instructions |
-| `cosmos_h_dreams/LICENSE` and `cosmos_h_dreams/NOTICE` | Product package licensing files included by its build configuration |
-| `cosmos_h_dreams/pyproject.toml` and `uv.lock` | Product dependencies and resolved workspace versions |
+| `cosmos3_h_dreams/LICENSE` and `cosmos3_h_dreams/NOTICE` | Product package licensing files included by its build configuration |
+| `cosmos3_h_dreams/pyproject.toml` and `uv.lock` | Product dependencies and resolved workspace versions |
 
 Read current contents before changing them. Do not describe the notices as a
 complete dependency inventory unless they have been checked as such. Preserve
