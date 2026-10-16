@@ -125,6 +125,26 @@ checkpoints, recordings, credentials, or private keys.
 This project accepts contributions under Apache-2.0. All contributions require
 sign-off under the [Developer Certificate of Origin](https://developercertificate.org/).
 
+### Signing Your Work
+
+We require that all contributors "sign-off" on their commits. This certifies that the contribution is your original work, or you have rights to submit it under the same license, or a compatible license.
+
+Any contribution which contains commits that are not Signed-Off will not be accepted.
+
+To sign off on a commit you simply use the `--signoff` (or `-s`) option when committing your changes:
+
+```bash
+git commit -s -m "Add cool feature."
+```
+
+This will append the following to your commit message:
+
+```
+Signed-off-by: Your Name <your@email.com>
+```
+
+### Full text of the DCO
+
 ```
 Developer Certificate of Origin
 Version 1.1
@@ -161,17 +181,6 @@ By making a contribution to this project, I certify that:
     maintained indefinitely and may be redistributed consistent with
     this project or the open source license(s) involved.
 ```
-
-### Signing Your Work
-
-Sign each commit with your name and email:
-
-```bash
-git commit -s -m "Describe the change"
-```
-
-This adds a `Signed-off-by: Your Name <your@email.com>` trailer. It certifies
-that you have the right to submit the contribution under the project's license.
 
 ## Licensing of contributions
 
