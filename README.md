@@ -109,6 +109,9 @@ Yu Lu, Junjie Yang, Piotr Koniusz, YuXin Song, and Yi Yang in
 
 ## License
 
-Source code is distributed under [Apache-2.0](LICENSE). See
+Source code is distributed under [Apache-2.0](LICENSE). The
+`cosmos3_h_dreams/` package is under the same Apache License 2.0 and the same
+NVIDIA copyright; its copy is included for the package build at
+[cosmos3_h_dreams/LICENSE](cosmos3_h_dreams/LICENSE). See
 [NOTICE](NOTICE) and [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) for attribution.
 Downloaded model assets retain their own license terms.
