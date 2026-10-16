@@ -3,9 +3,18 @@ Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 Includes the NVIDIA FlashDreams framework.
 
-This product is licensed under the Apache License, Version 2.0;
+The source code is licensed under the Apache License, Version 2.0;
 the full license text is reproduced in LICENSE at the repository root
 and in LICENSES/Apache-2.0.txt.
+
+The scene image assets/example_data/scenes/example_frame.png is an extract
+from episode_004148 of the CMR surgical (cholecystectomy) data in
+Open-H-Embodiment. Attribution: CMR and the Open-H-Embodiment dataset contributors.
+The dataset is maintained by NVIDIA Corporation. The image retains its
+CC-BY-4.0 license, separately from the source code:
+https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Open-H-Embodiment
+See LICENSES/CC-BY-4.0.txt for the full license and THIRD-PARTY-NOTICES for
+attribution and format information.
 
 See THIRD-PARTY-NOTICES at the repository root for third-party software
 attributions and license information for runtime dependencies and selected

@@ -46,8 +46,7 @@ openssl req -x509 -newkey rsa:2048 -nodes \
 ### 3. Start the simulation
 
 ```bash
-uv run --no-sync --package flashdreams-cosmos3-h-dreams \
-  python -m cosmos3_h_dreams.headset_webrtc \
+uv run --no-sync cosmos3-h-dreams-run headset \
   --session-config cosmos3_h_dreams/configs/real_time_2steps.yaml
 ```
 
@@ -92,7 +91,7 @@ use and throughput depend on resolution, chunk size, cache, and decoder settings
 ## Resources
 
 - [Cosmos3-H-Dreams HF](https://huggingface.co/nvidia/Cosmos3-H-Dreams): model repository for the previous version.
-- [Cosmos3-H-Embodied-Nano](): Base model for Cosmos3-H-Dreams.
+- [Cosmos3-H-Embodied-Nano](https://github.com/NVIDIA-Medtech/Cosmos3-H-Embodied-Nano): Base model for Cosmos3-H-Dreams.
 - [FlashDreams](https://github.com/NVIDIA/flashdreams): Underlying inference and serving framework.
 - [Open-H-Dataset](https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Open-H-Embodiment): Multi-embodiment surgical dataset used for training.
 - [NVIDIA Cosmos Platform](https://www.nvidia.com/en-us/ai/cosmos/): Product website.

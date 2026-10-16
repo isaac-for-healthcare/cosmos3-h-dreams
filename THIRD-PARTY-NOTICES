@@ -11,7 +11,8 @@ Apache License, Version 2.0 — see LICENSE at the repository root. Per-file SPD
 identifiers and the REUSE 3.3 manifest at REUSE.toml are the
 machine-readable counterparts of the information below. LICENSES/ contains
 the Apache-2.0 and BSD-3-Clause license texts and Pillow's MIT-CMU license
-and bundled notices. Other dependency license texts are supplied with their
+and bundled notices. CC-BY-4.0.txt contains the license for the bundled
+Open-H-Embodiment example data. Other dependency license texts are supplied with their
 distributions or available through the upstream links below.
 
 Most dependencies are consumed unmodified at runtime through Python's
@@ -135,3 +136,30 @@ Source-level redistributions
 No additional third-party source is bundled by the Cosmos3-H-Dreams package.
 Runtime dependencies and downloaded model assets are supplied separately under
 their upstream terms.
+
+
+================================================================================
+Bundled example data: Open-H-Embodiment
+================================================================================
+
+Source: https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Open-H-Embodiment
+Attribution: CMR and the Open-H-Embodiment dataset contributors
+Dataset subset: CMR surgical (cholecystectomy)
+Source episode: episode_004148
+Maintainer / hosting organization: NVIDIA Corporation
+Stewardship: Open-H-Embodiment community & Steering Group
+License: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+Full license text: LICENSES/CC-BY-4.0.txt
+
+Bundled file:
+  assets/example_data/scenes/example_frame.png
+
+The image is a frame extracted from the source episode and supplied as PNG for
+Cosmos3-H-Dreams replay and headset sessions. The upstream dataset stores video
+as MP4. Any additional preprocessing has not been recorded in this repository.
+
+The dataset license applies to this image rather than the source code's
+Apache-2.0 license. Attribution to the dataset contributors does not imply their
+endorsement of this project. The dataset's disclaimer of warranties and other
+terms are included in LICENSES/CC-BY-4.0.txt.

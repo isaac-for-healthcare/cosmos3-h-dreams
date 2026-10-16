@@ -66,3 +66,12 @@ path = [
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
 SPDX-License-Identifier = "Apache-2.0"
+
+# CMR surgical (cholecystectomy), episode_004148, from Open-H-Embodiment.
+[[annotations]]
+path = [
+    "assets/example_data/scenes/example_frame.png",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "CMR and the Open-H-Embodiment dataset contributors"
+SPDX-License-Identifier = "CC-BY-4.0"

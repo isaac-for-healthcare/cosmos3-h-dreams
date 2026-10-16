@@ -25,6 +25,12 @@ Install system `ffmpeg` for MP4 output. See the root
 The commands use `--no-sync` after installation to keep the existing environment.
 
 Supply a checkpoint and matching scene assets. For reference, example data is available in [example_data/scenes](../assets/example_data/scenes/).
+The bundled image comes from `episode_004148` of the
+CMR surgical (cholecystectomy) data in
+[Open-H-Embodiment](https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Open-H-Embodiment)
+and retains its [CC-BY-4.0 license](../LICENSES/CC-BY-4.0.txt). See the
+[example-data attribution](../THIRD-PARTY-NOTICES)
+for contributor credit and format information.
 
 Asset paths resolve from the launch directory, including
 when a session YAML lives in another directory. Supply the checkpoint through
@@ -105,10 +111,15 @@ Generate `cert.pem` and `key.pem` as shown in the root
 must cover the IP or hostname used by the headset; regenerate it if that changes.
 
 ```bash
-uv run --no-sync --package flashdreams-cosmos3-h-dreams \
-  python -m cosmos3_h_dreams.headset_webrtc \
+uv run --no-sync cosmos3-h-dreams-run headset \
   --session-config cosmos3_h_dreams/configs/real_time_2steps.yaml
 ```
+
+The launcher lists the available application names when a name is unknown.
+Use `cosmos3-h-dreams-run --help` for launcher help, or
+`cosmos3-h-dreams-run headset --help` for headset options. After updating
+an existing checkout, run the installation command again to install the launcher
+before using `uv run --no-sync`.
 
 The server binds to `0.0.0.0:8443` by default. Open
 `https://<server-LAN-IP>:8443/headset` in the headset browser and select **Enter VR**.

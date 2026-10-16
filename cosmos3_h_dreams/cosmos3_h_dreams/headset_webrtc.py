@@ -736,12 +736,16 @@ def create_app(manager: HeadsetWebRTCServer) -> web.Application:
     return app
 
 
-def main() -> None:
-    """Start the independent HTTPS Headset flow with the shared model options."""
+def main(argv: list[str] | None = None) -> None:
+    """Start the independent HTTPS headset flow with the shared model options.
+
+    Args:
+        argv: Command-line arguments, defaulting to the process arguments.
+    """
     selector = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     selector.add_argument("--headset-config", choices=HEADSET_WEBRTC_PRESETS)
     selector.add_argument("--session-config", type=Path)
-    selected, _ = selector.parse_known_args()
+    selected, _ = selector.parse_known_args(argv)
     session_data = (
         load_session_config(selected.session_config)
         if selected.session_config
@@ -786,7 +790,7 @@ def main() -> None:
     headset_defaults.pop("preset", None)
     parser.set_defaults(**HEADSET_WEBRTC_PRESETS.get(headset_preset, {}))
     parser.set_defaults(**headset_defaults)
-    network, model_args = parser.parse_known_args()
+    network, model_args = parser.parse_known_args(argv)
     if network.video_transport not in {"webrtc", "mjpeg"}:
         parser.error("video_transport must be webrtc or mjpeg")
     if not 1 <= network.port <= 65535:

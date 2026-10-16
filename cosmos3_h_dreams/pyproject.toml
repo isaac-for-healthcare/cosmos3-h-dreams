@@ -24,6 +24,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
+[project.scripts]
+cosmos3-h-dreams-run = "cosmos3_h_dreams.cli:main"
+
 [project.entry-points."flashdreams.applications"]
 cosmos3-h-dreams = "cosmos3_h_dreams.app:create_app"
 
