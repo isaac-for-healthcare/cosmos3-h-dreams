@@ -65,9 +65,11 @@ pillow                 MIT-CMU      https://github.com/python-pillow/Pillow
 websockets             BSD-3-Clause https://github.com/python-websockets/websockets
 
 The product also depends on the included Apache-2.0 FlashDreams package.
-Model and tokenizer assets are fetched
-separately and retain their upstream terms; product checkpoints and scene data
-are not shipped.
+Model and tokenizer assets are fetched separately and retain their upstream
+terms. Product checkpoints and user-provided scene/action assets are supplied
+separately. This repository does include two example assets:
+assets/example_data/scenes/example_frame.png and
+assets/example_data/scenes/trajectory.npy, attributed individually below.
 
 ================================================================================
 Reference architectures
@@ -282,3 +284,17 @@ The dataset license applies to this image rather than the source code's
 Apache-2.0 license. Attribution to the dataset contributors does not imply their
 endorsement of this project. The dataset's disclaimer of warranties and other
 terms are included in LICENSES/CC-BY-4.0.txt.
+
+================================================================================
+Bundled example trajectory: first-party project asset
+================================================================================
+
+Bundled file: assets/example_data/scenes/trajectory.npy
+Provenance: NVIDIA-generated for Cosmos3-H-Dreams.
+Copyright: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+License: Apache-2.0
+Full license text: LICENSES/Apache-2.0.txt
+
+This NumPy action trajectory is a first-party example for action replay. It is
+separate from the CMR/Open-H-Embodiment image described above; the image's
+CC-BY-4.0 attribution does not apply to this trajectory.

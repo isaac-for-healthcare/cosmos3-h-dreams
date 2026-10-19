@@ -16,6 +16,11 @@ https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Open-H-Embodiment
 See LICENSES/CC-BY-4.0.txt for the full license and THIRD-PARTY-NOTICES for
 attribution and format information.
 
+The example action trajectory assets/example_data/scenes/trajectory.npy is
+NVIDIA-generated for Cosmos3-H-Dreams. It is a first-party project asset,
+separate from the CMR/Open-H-Embodiment image, and is supplied
+under Apache-2.0 with the NVIDIA copyright stated above.
+
 See THIRD-PARTY-NOTICES at the repository root for third-party software
 attributions and license information for runtime dependencies and selected
 optional and development components.

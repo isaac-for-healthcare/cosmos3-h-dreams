@@ -15,8 +15,10 @@ the simulation from a headset browser and watch the output on the headset or a P
 ## Quick Start
 
 Run these commands from the repository root. You need a compatible
-Cosmos3-H-Dreams checkpoint and an initial scene image; model weights and scene
-assets are supplied separately.
+Cosmos3-H-Dreams checkpoint and an initial scene image. Model weights and user
+assets are supplied separately; the repository includes an
+[example scene image and action trajectory](assets/example_data/scenes/), with
+their provenance and licenses recorded in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
 
 ### 1. Install dependencies
 

@@ -31,6 +31,9 @@ CMR surgical (cholecystectomy) data in
 and retains its [CC-BY-4.0 license](../LICENSES/CC-BY-4.0.txt). See the
 [example-data attribution](../THIRD-PARTY-NOTICES)
 for contributor credit and format information.
+The bundled `trajectory.npy` is an NVIDIA-generated example action trajectory
+for this project, licensed under Apache-2.0. It is
+separate from the dataset-derived image.
 
 Asset paths resolve from the launch directory, including
 when a session YAML lives in another directory. Supply the checkpoint through

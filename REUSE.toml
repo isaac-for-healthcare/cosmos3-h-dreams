@@ -75,3 +75,11 @@ path = [
 precedence = "override"
 SPDX-FileCopyrightText = "CMR and the Open-H-Embodiment dataset contributors"
 SPDX-License-Identifier = "CC-BY-4.0"
+
+# NVIDIA-generated example trajectory for
+# Cosmos3-H-Dreams; separate from the CMR/Open-H-Embodiment image above.
+[[annotations]]
+path = "assets/example_data/scenes/trajectory.npy"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+SPDX-License-Identifier = "Apache-2.0"
