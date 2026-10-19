@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import asyncio
 import io
+import subprocess
 import sys
 import threading
 from importlib.machinery import ModuleSpec, NamespaceLoader, PathFinder
 from importlib.resources import files
 from pathlib import Path
+from textwrap import dedent
 from types import SimpleNamespace
 
 import numpy as np
@@ -40,6 +42,87 @@ from cosmos3_h_dreams.headset_webrtc import (
 from cosmos3_h_dreams import headset_webrtc as webrtc_module
 
 pytestmark = pytest.mark.ci_cpu
+
+
+def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
+    """Exercise real MJPEG conversion in a fresh process with WebRTC blocked."""
+    check = subprocess.run(
+        [sys.executable, "-c", dedent('''
+            import asyncio
+            import importlib.abc
+            import io
+            import sys
+            from pathlib import Path
+            from types import SimpleNamespace
+
+            class NoWebRTC(importlib.abc.MetaPathFinder):
+                def find_spec(self, fullname, path=None, target=None):
+                    if (fullname.split('.')[0] in {'aiortc', 'av'}
+                            or fullname.startswith('flashdreams.serving.webrtc')):
+                        raise AssertionError(f'MJPEG imported {fullname}')
+
+            sys.meta_path.insert(0, NoWebRTC())
+            import torch
+            from PIL import Image
+            from aiohttp import MultipartReader
+            from aiohttp.test_utils import TestClient, TestServer
+            from cosmos3_h_dreams.headset_webrtc import (
+                HeadsetWebRTCServer, LatestHeadsetFrames, MjpegFrames, create_app,
+            )
+
+            video = torch.zeros((1, 4, 6, 3), dtype=torch.uint8)
+            video[..., 0] = 220
+            video[..., 1] = 30
+            video[..., 2] = 50
+            result = SimpleNamespace(
+                video_chunk=video, layout='thwc', metadata={'action_rows': 1},
+            )
+            floating = SimpleNamespace(
+                video_chunk=video.float() / 127.5 - 1, layout='thwc',
+            )
+            converted = MjpegFrames().prepare_result_frames(floating)[0]
+            assert abs(int(converted[0, 0, 0]) - 220) <= 1
+
+            async def exercise():
+                requirements = iter([SimpleNamespace(input_frame_count=1), None])
+                manager = HeadsetWebRTCServer(
+                    session=SimpleNamespace(
+                        config=SimpleNamespace(fps=10, profile=False),
+                        init=lambda: None, close=lambda: None,
+                        next_step_requirements=lambda: next(requirements),
+                        step=lambda window: result,
+                    ),
+                    frames=LatestHeadsetFrames(fps=10), video_transport='mjpeg',
+                )
+                async with TestClient(TestServer(create_app(manager))) as client:
+                    for route in ('/headset/offer', '/viewer/offer'):
+                        response = await client.post(
+                            route, json={'sdp': 'offer', 'type': 'offer'},
+                        )
+                        assert response.status == 409
+                    stream = await client.get('/video')
+                    async with client.ws_connect('/ws'):
+                        reader = MultipartReader.from_response(stream)
+                        part = await asyncio.wait_for(reader.next(), timeout=5)
+                        image = Image.open(io.BytesIO(await part.read()))
+                        assert image.size == (6, 4)
+                        assert abs(image.getpixel((0, 0))[0] - 220) <= 3
+                        assert manager.peer is None and manager.viewer_peer is None
+                    stream.close()
+
+            asyncio.run(exercise())
+            assert not any(n.split('.')[0] in {'av', 'aiortc'} for n in sys.modules)
+            maps = Path('/proc/self/maps')
+            if maps.exists():
+                loaded = maps.read_text().lower()
+                for library in ('libx264', 'libx265', 'libavcodec', 'libavformat'):
+                    assert library not in loaded, f'MJPEG loaded {library}'
+        ''')],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert check.returncode == 0, check.stdout + check.stderr
 
 
 @pytest.mark.parametrize(
@@ -197,7 +280,7 @@ def test_display_fps_is_independent_of_action_fps(
     class FakePeer:
         localDescription = SimpleNamespace(sdp="answer", type="answer")
 
-        def __init__(self, configuration: webrtc_module.RTCConfiguration) -> None:
+        def __init__(self, configuration: object) -> None:
             assert configuration.iceServers == []
 
         def addTrack(self, _track: object) -> None:
@@ -218,7 +301,7 @@ def test_display_fps_is_independent_of_action_fps(
         async def close(self) -> None:
             pass
 
-    monkeypatch.setattr(webrtc_module, "RTCPeerConnection", FakePeer)
+    monkeypatch.setattr("aiortc.RTCPeerConnection", FakePeer)
     frames = LatestHeadsetFrames(fps=10)
     session = SimpleNamespace(config=SimpleNamespace(fps=10), actions_per_step=16)
     manager = HeadsetWebRTCServer(session=session, frames=frames, display_fps=30)
@@ -256,7 +339,7 @@ def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
     )
     frame = np.full((4, 6, 3), (220, 30, 50), dtype=np.uint8)
     monkeypatch.setattr(
-        webrtc_module.BufferedVideoTrack,
+        webrtc_module.MjpegFrames,
         "prepare_result_frames",
         lambda _track, _result: (frame,),
     )
@@ -291,7 +374,7 @@ def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
                     assert image.getpixel((0, 0)) == pytest.approx((220, 30, 50), abs=3)
                 assert manager.peer is None
                 assert manager.viewer_peer is None
-                assert manager.track.qsize() == 0
+                assert isinstance(manager.track, webrtc_module.MjpegFrames)
             for _ in range(20):
                 if manager.socket is None:
                     break
@@ -425,7 +508,7 @@ def test_mjpeg_overlap_is_bounded_and_preserves_frame_order(monkeypatch, overlap
             overlap_playback=overlap,
         )
         manager.socket = object()
-        manager.track = webrtc_module.BufferedVideoTrack(fps=1000, maxsize=1)
+        manager.track = webrtc_module.MjpegFrames()
         manager.track.prepare_result_frames = lambda result: (
             2 * result.step_index,
             2 * result.step_index + 1,
@@ -506,7 +589,7 @@ def test_mjpeg_overlap_discards_stale_playback(monkeypatch, transition):
             overlap_playback=True,
         )
         manager.socket = object()
-        track = webrtc_module.BufferedVideoTrack(fps=1000, maxsize=1)
+        track = webrtc_module.MjpegFrames()
         track.prepare_result_frames = lambda result: (
             2 * result.step_index,
             2 * result.step_index + 1,
@@ -526,9 +609,7 @@ def test_mjpeg_overlap_discards_stale_playback(monkeypatch, transition):
                 if transition in {"disconnect", "reconnect"}:
                     await manager.close_peer()
                     if transition == "reconnect":
-                        manager.track = webrtc_module.BufferedVideoTrack(
-                            fps=1000, maxsize=1
-                        )
+                        manager.track = webrtc_module.MjpegFrames()
                         manager._ready.set()
                     release_encode.set()
                 release_step.set()
@@ -569,9 +650,11 @@ def test_generated_frames_reach_headset_and_viewer(
     manager = HeadsetWebRTCServer(session=session, frames=LatestHeadsetFrames(fps=10))
 
     async def check() -> None:
+        from flashdreams.serving.webrtc.media import BufferedVideoTrack
+
         manager.socket = object()
-        manager.track = webrtc_module.BufferedVideoTrack(fps=30, maxsize=4)
-        manager.viewer_track = webrtc_module.BufferedVideoTrack(fps=30, maxsize=4)
+        manager.track = BufferedVideoTrack(fps=30, maxsize=4)
+        manager.viewer_track = BufferedVideoTrack(fps=30, maxsize=4)
         frame = np.zeros((2, 2, 3), dtype=np.uint8)
         manager.track.prepare_result_frames = lambda _result: (frame,)
         manager._ready.set()

@@ -27,15 +27,16 @@ import ssl
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aiohttp import WSMsgType, web
-from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 from flashdreams.demo import CanonicalInputWindow
 from flashdreams.infra.time import TimeWindow
 from flashdreams.runtime import StepResult
-from flashdreams.serving.realtime.media import encode_rgb_frame_to_jpeg
-from flashdreams.serving.webrtc.media import BufferedVideoTrack
+from flashdreams.serving.realtime.media import (
+    encode_rgb_frame_to_jpeg,
+    rgb_array_to_uint8_frames,
+)
 
 from cosmos3_h_dreams._runtime.hand_client.source import Observation
 from cosmos3_h_dreams._runtime.headset_controller import parse_xr_frame
@@ -45,6 +46,10 @@ from .config import COSMOS3_H_DREAMS_PRESETS, Cosmos3HDreamsConfig
 from .headset import HeadsetActionSource
 from .session import Cosmos3HDreamsSession
 from .session_config import load_session_config
+
+if TYPE_CHECKING:
+    from aiortc import RTCPeerConnection
+    from flashdreams.serving.webrtc.media import BufferedVideoTrack
 
 _WEB_DIR = Path(__file__).resolve().parent / "web"
 
@@ -124,6 +129,27 @@ class LatestHeadsetFrames:
         return Observation(frame=frame, capture_ns=now_ns, source="headset-webrtc")
 
 
+class MjpegFrames:
+    """Convert model frames without importing a WebRTC track or its codecs."""
+
+    def prepare_result_frames(self, result: StepResult) -> tuple[Any, ...]:
+        video = result.video_chunk
+        return tuple(
+            rgb_array_to_uint8_frames(
+                video,
+                layout=result.layout,
+                value_range="minus_one_one" if video.is_floating_point() else "uint8",
+                sync_device=True,
+            )
+        )
+
+    async def flush(self) -> None:
+        """Leave playback invalidation to the server; no frames are queued here."""
+
+    async def close(self) -> None:
+        """Leave playback cleanup to the server; no transport is held here."""
+
+
 class HeadsetWebRTCServer:
     """Bind one headset browser to the existing model session and video track."""
 
@@ -156,7 +182,7 @@ class HeadsetWebRTCServer:
         self._jpeg_changed = asyncio.Condition()
         self.source: HeadsetActionSource | None = None
         self.peer: RTCPeerConnection | None = None
-        self.track: BufferedVideoTrack | None = None
+        self.track: BufferedVideoTrack | MjpegFrames | None = None
         self.viewer_peer: RTCPeerConnection | None = None
         self.viewer_track: BufferedVideoTrack | None = None
         self.socket: web.WebSocketResponse | None = None
@@ -223,6 +249,9 @@ class HeadsetWebRTCServer:
 
     async def answer(self, sdp: str, offer_type: str) -> dict[str, str]:
         """Negotiate a fresh video peer for the active headset socket."""
+        from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
+        from flashdreams.serving.webrtc.media import BufferedVideoTrack
+
         await self.close_peer()
         track = BufferedVideoTrack(
             fps=self.display_fps,
@@ -259,6 +288,9 @@ class HeadsetWebRTCServer:
         return {"sdp": local.sdp, "type": local.type}
 
     async def answer_viewer(self, sdp: str, offer_type: str) -> dict[str, str]:
+        from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
+        from flashdreams.serving.webrtc.media import BufferedVideoTrack
+
         await self.close_viewer_peer()
         track = BufferedVideoTrack(
             fps=self.display_fps,
@@ -446,7 +478,7 @@ class HeadsetWebRTCServer:
 
     async def _publish_mjpeg(
         self,
-        track: BufferedVideoTrack,
+        track: MjpegFrames,
         result: StepResult,
         frames: tuple[Any, ...],
         cycle_started: float,
@@ -606,7 +638,7 @@ def create_app(manager: HeadsetWebRTCServer) -> web.Application:
         if manager.source is not None:
             manager.source.reset_calibration()
         if manager.video_transport == "mjpeg":
-            manager.track = BufferedVideoTrack(fps=manager.display_fps, maxsize=1)
+            manager.track = MjpegFrames()
             manager._ready.set()
         try:
             async for message in ws:
