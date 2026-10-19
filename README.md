@@ -115,3 +115,35 @@ NVIDIA copyright; its copy is included for the package build at
 [cosmos3_h_dreams/LICENSE](cosmos3_h_dreams/LICENSE). See
 [NOTICE](NOTICE) and [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) for attribution.
 Downloaded model assets retain their own license terms.
+
+## Automatically retrieved materials
+
+NOTICE AND DISCLAIMER: This software automatically retrieves, accesses or interacts with external materials. Those retrieved materials are not distributed with this software and are governed solely by separate terms, conditions and licenses. You are solely responsible for finding, reviewing and complying with all applicable terms, conditions, and licenses, and for verifying the security, integrity and suitability of any retrieved materials for your specific use case. This software is provided "AS IS", without warranty of any kind. The author makes no representations or warranties regarding any retrieved materials, and assumes no liability for any losses, damages, liabilities or legal consequences from your use or inability to use this software or any retrieved materials. Use this software and the retrieved materials at your own risk.
+
+Depending on the selected CUDA profile, optional extras, decoder and checkpoint
+location, installation or runtime loading may retrieve the following NVIDIA
+materials. The selected package versions are recorded in `uv.lock`; each
+material retains its own applicable terms.
+
+| NVIDIA materials | Available from |
+| --- | --- |
+| CUDA Toolkit metapackages and CUDA libraries (runtime, cuBLAS, cuFFT, cuFile, cuRAND, cuSOLVER, cuSPARSE, cuSPARSELt, CUPTI, NVRTC and nvJitLink) | [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit), [cuda-toolkit on PyPI](https://pypi.org/project/cuda-toolkit/) |
+| CUDA Python bindings and path discovery | [cuda-bindings](https://pypi.org/project/cuda-bindings/), [cuda-pathfinder](https://pypi.org/project/cuda-pathfinder/) |
+| cuDNN | [CUDA 12 package](https://pypi.org/project/nvidia-cudnn-cu12/), [CUDA 13 package](https://pypi.org/project/nvidia-cudnn-cu13/) |
+| NCCL | [CUDA 12 package](https://pypi.org/project/nvidia-nccl-cu12/), [CUDA 13 package](https://pypi.org/project/nvidia-nccl-cu13/) |
+| NVSHMEM | [CUDA 12 package](https://pypi.org/project/nvidia-nvshmem-cu12/), [CUDA 13 package](https://pypi.org/project/nvidia-nvshmem-cu13/) |
+| NVTX and NVIDIA management-library Python bindings | [nvidia-nvtx](https://pypi.org/project/nvidia-nvtx/), [nvidia-nvtx-cu12](https://pypi.org/project/nvidia-nvtx-cu12/), [nvidia-ml-py](https://pypi.org/project/nvidia-ml-py/) |
+| Transformer Engine and its CUDA/PyTorch components (development extra) | [Transformer Engine](https://github.com/NVIDIA/TransformerEngine), [transformer-engine on PyPI](https://pypi.org/project/transformer-engine/) |
+| NVIDIA VFX bindings (optional RTX post-processing extra) | [nvidia-vfx](https://pypi.org/project/nvidia-vfx/) |
+| NVIDIA model checkpoints, when the user supplies a remote checkpoint location | The user-selected source; [Cosmos3-H-Dreams model repository](https://huggingface.co/nvidia/Cosmos3-H-Dreams) hosts the previously released version |
+
+Third-party model and tokenizer materials may also be retrieved on first use:
+
+- [Wan2.2 VAE](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B/blob/main/Wan2.2_VAE.pth).
+- [TAEHV decoder](https://github.com/madebyollin/taehv), including the
+  [taew2_2.pth mirror](https://huggingface.co/lightx2v/Autoencoders/blob/main/taew2_2.pth).
+- [Qwen3-VL-8B-Instruct tokenizer](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct).
+
+Model weights and tokenizer assets are supplied separately from this source
+release. See [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) for dependency attribution
+and [NOTICE](NOTICE) for the separately licensed example image included here.
