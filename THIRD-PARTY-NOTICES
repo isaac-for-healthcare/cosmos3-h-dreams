@@ -41,13 +41,15 @@ filelock               MIT          https://github.com/tox-dev/py-filelock
 ftfy                   Apache-2.0   https://github.com/rspeer/python-ftfy
 huggingface-hub        Apache-2.0   https://github.com/huggingface/huggingface_hub
 loguru                 MIT          https://github.com/Delgan/loguru
-numpy                  BSD-3-Clause https://github.com/numpy/numpy
+numpy                  BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0
+                                    https://github.com/numpy/numpy
 nvidia-ml-py           BSD-3-Clause https://pypi.org/project/nvidia-ml-py/
 psutil                 BSD-3-Clause https://github.com/giampaolo/psutil
 pyyaml                 MIT          https://github.com/yaml/pyyaml
 safetensors            Apache-2.0   https://github.com/huggingface/safetensors
 torch                  BSD-3-Clause https://pytorch.org
-tqdm                   MIT, MPL-2.0 https://github.com/tqdm/tqdm
+tqdm                   MPL-2.0 AND MIT
+                                    https://github.com/tqdm/tqdm
 transformers           Apache-2.0   https://github.com/huggingface/transformers
 triton-windows         MIT          https://github.com/woct0rdho/triton-windows
 tyro                   MIT          https://github.com/brentyi/tyro
@@ -101,11 +103,76 @@ this repository.
 Serving: required by Cosmos3-H-Dreams, optional in FlashDreams
 ================================================================================
 
-aiohttp                Apache-2.0   https://github.com/aio-libs/aiohttp
+aiohttp                Apache-2.0 AND MIT
+                                    https://github.com/aio-libs/aiohttp
 aiortc                 BSD-3-Clause https://github.com/aiortc/aiortc
 
 The serving extra supplies aiohttp and aiortc. Their transitive dependencies
 are resolved in uv.lock and supplied under their own licenses.
+
+Selected serving transitive dependencies (not direct product requirements):
+
+av                     BSD-3-Clause https://github.com/PyAV-Org/PyAV/blob/v16.1.0/LICENSE.txt
+cryptography           Apache-2.0 OR BSD-3-Clause
+                                    https://github.com/pyca/cryptography/blob/50.0.1/LICENSE
+
+These are the Python projects' licenses. Binary wheels may also bundle native
+libraries, including FFmpeg in PyAV wheels and OpenSSL in cryptography wheels;
+retain and review the notices supplied with the actual binary distributions.
+
+================================================================================
+Video/audio codec functionality
+================================================================================
+
+The WebRTC path supports H.264 and VP8 through aiortc/PyAV;
+MP4 output calls host FFmpeg with libx264, and the optional OpenCV benchmark
+writer requests MPEG-4 Part 2 (mp4v). MJPEG uses Pillow JPEG encoding.
+aiortc also contains Opus, G.711 PCMA/PCMU and G.722 codec functionality,
+although the product's headset path adds video tracks only.
+
+H.264 software encoding: x264, GPL-2.0-or-later (commercial licensing is
+separately offered by its owner). The inspected PyAV wheel also bundles
+x265 (HEVC), whose OSS terms are GPL-2.0-or-later.
+    https://ffmpeg.org/legal.html
+    https://x264.org/licensing/
+    https://github.com/videolan/x265/blob/master/COPYING
+VP8/VP9: libvpx, BSD-3-Clause.
+    https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/LICENSE
+Opus: libopus, BSD-3-Clause, with separate published patent terms.
+    https://opus-codec.org/license/
+MPEG-4 Part 2, G.711 and G.722 implementations are supplied through FFmpeg;
+the license depends on the particular FFmpeg build described below.
+JPEG/MJPEG: Pillow is MIT-CMU; native JPEG component notices are reproduced
+in LICENSES/MIT-CMU.txt and retained in Pillow's own distribution.
+
+PyAV av 16.1.0, inspected CPython 3.12 manylinux x86_64 wheel:
+    The Python binding is BSD-3-Clause. Its bundled libavcodec 62.11.100
+    reports "LGPL version 3 or later" and enables x264/x265. Both libraries
+    are physically bundled. The referenced upstream build patches FFmpeg's
+    configure script to move x264/x265 out of the GPL-library check.
+    Record the GPL codec components separately; the runtime LGPL label does
+    not establish that the binary bundle is free of GPL components. The
+    applicable combined-distribution terms require separate license review.
+    https://github.com/PyAV-Org/PyAV/blob/v16.1.0/scripts/ffmpeg-latest.json
+    https://github.com/PyAV-Org/pyav-ffmpeg/blob/8.0.1-3/patches/ffmpeg.patch
+
+opencv-python-headless 4.13.0.92, inspected manylinux x86_64 wheel:
+    OpenCV is Apache-2.0. Its bundled libavcodec 62.11.100 reports
+    "LGPL version 2.1 or later". The wheel's LICENSE-3RD-PARTY.txt includes
+    the FFmpeg LGPL notice and libvpx's BSD terms. Other bundled libraries
+    retain their own notices. This build does not enable x264/x265.
+    https://github.com/opencv/opencv-python/blob/4.x/LICENSE-3RD-PARTY.txt
+
+PyNvVideoCodec is an optional dynamically discovered backend, not a declared
+or locked dependency of this workspace. The included framework's NVENC path
+requests H.264. PyNvVideoCodec 2.1.0 is MIT-licensed; Video Codec SDK and NVIDIA
+driver/runtime terms remain separate. No version is pinned by this project.
+    https://pypi.org/project/pynvvideocodec/2.1.0/
+    https://developer.nvidia.com/pynvvideocodec
+
+The wheel inspection covers the named Linux x86_64 builds; other platform
+artifacts and the separately installed host FFmpeg require their own
+build-specific license checks.
 
 ================================================================================
 Optional local window: FlashDreams
@@ -126,16 +193,108 @@ transformer-engine     Apache-2.0   https://github.com/NVIDIA/TransformerEngine
 
 The CUDA dependency groups include torchvision alongside torch. Transformer
 Engine belongs to the FlashDreams development extra, not its base runtime.
-This file lists runtime dependencies and selected optional/development
-components; it is not a complete inventory of every transitive or test package.
+This file summarizes runtime dependencies and selected optional/development
+components. uv.lock records transitive dependencies and alternative CUDA and
+platform profiles; it is not an inventory of a single installed environment.
+
+Direct test, lint and build requirements declared by the workspace:
+
+pytest                 MIT          https://github.com/pytest-dev/pytest
+pytest-benchmark       BSD-2-Clause https://github.com/ionelmc/pytest-benchmark
+pytest-asyncio         Apache-2.0   https://github.com/pytest-dev/pytest-asyncio
+pytest-manual-marker   MIT          https://pypi.org/project/pytest-manual-marker/
+tomli                  MIT          https://github.com/hukkin/tomli
+pre-commit             MIT          https://github.com/pre-commit/pre-commit
+ruff                   MIT          https://github.com/astral-sh/ruff
+ty                     MIT          https://github.com/astral-sh/ty
+setuptools             MIT          https://github.com/pypa/setuptools
+wheel                  MIT          https://github.com/pypa/wheel
+
+================================================================================
+Additional locked packages
+================================================================================
+
+certifi 2026.4.22       MPL-2.0
+    https://github.com/certifi/python-certifi/blob/master/LICENSE
+
+regendoc 0.9.0         MPL-2.0
+    https://pypi.org/project/regendoc/0.9.0/
+
+google-crc32c 1.8.0     Apache-2.0
+    https://github.com/googleapis/python-crc32c/blob/v1.8.0/LICENSE
+    The native CRC32C library has its own notices; the Python project license
+    does not replace licenses of native libraries bundled in wheels.
+
+matplotlib-inline 0.2.1 BSD-3-Clause
+    https://github.com/ipython/matplotlib-inline/blob/0.2.1/LICENSE
+
+transformer-engine 2.14.1 Apache-2.0
+    https://github.com/NVIDIA/TransformerEngine/blob/v2.14.1/LICENSE
+    This is the Transformer Engine project license, not a replacement for
+    licenses of its CUDA dependencies or other bundled components.
+
+nvidia-cudnn-cu12 / nvidia-cudnn-cu13 9.19.0.56
+    NVIDIA Software Development Kit License Agreement (proprietary)
+    https://docs.nvidia.com/deeplearning/cudnn/backend/latest/reference/eula.html
+    Confirmed against both locked cu12 and cu13 wheels' bundled License.txt.
+
+nvidia-nccl-cu12 / nvidia-nccl-cu13 2.28.9
+    BSD-3-Clause; accompanying NVTX notices also apply
+    https://github.com/NVIDIA/nccl/blob/v2.28.9-1/LICENSE.txt
+    nvidia-nccl-cu13 2.28.9's bundled License.txt contains these BSD terms,
+    although its package metadata says LicenseRef-NVIDIA-Proprietary.
+    Both locked cu12 and cu13 wheels' License.txt files were inspected.
+
+nvidia-nvshmem-cu12 / nvidia-nvshmem-cu13 3.4.5
+    NVIDIA Software Development Kit License Agreement and CUDA supplement
+    (proprietary terms bundled in both locked cu12 and cu13 wheels' License.txt)
+    https://docs.nvidia.com/cuda/eula/
+    The wheel's bundled text is the version-specific evidence; the linked
+    documentation may change. Do not infer the wheel license from an OSS
+    source repository. Both locked cu12 and cu13 wheels were inspected.
+
+cuda-toolkit 12.8.1 / 13.0.2
+    No license is declared or bundled by either locked metapackage wheel.
+    https://pypi.org/project/cuda-toolkit/13.0.2/
+    This metadata-only package selects CUDA component packages. CUDA Toolkit
+    terms are documented at https://docs.nvidia.com/cuda/eula/; each selected
+    component retains its own license. The metapackage's missing license
+    declaration remains an owner-confirmation item, not an OSS license grant.
+
+The unsuffixed names nvidia-cudnn, nvidia-nccl and nvidia-nvshmem are not
+package records in this lock. The cu12/cu13 names above are the locked names.
+
+cuda-bindings 12.9.7 / 13.2.0
+    LicenseRef-NVIDIA-SOFTWARE-LICENSE (NVIDIA CUDA Python software license)
+    https://pypi.org/project/cuda-bindings/
+    Both locked wheels include NVIDIA SOFTWARE LICENSE. Do not substitute
+    the license of a newer upstream source revision for these versions.
 
 ================================================================================
 Source-level redistributions
 ================================================================================
 
-No additional third-party source is bundled by the Cosmos3-H-Dreams package.
-Runtime dependencies and downloaded model assets are supplied separately under
-their upstream terms.
+Included FlashDreams framework
+
+Path: flashdreams/
+Upstream: https://github.com/NVIDIA/flashdreams
+License: Apache-2.0
+Copyright: NVIDIA CORPORATION & AFFILIATES
+
+This repository vendors a substantial FlashDreams framework source tree,
+including runtime code, recipes, serving code, tools and tests, with local
+modifications. The retained framework source files carry NVIDIA copyright
+and Apache-2.0 SPDX notices. The repository LICENSE and NOTICE include the
+framework attribution.
+
+The upstream OmniDreams/Ludus renderer subtree is not included. In particular,
+the BSD-3-Clause cudaraster source and its Zlib-licensed LodePNG third-party
+source are absent from this source distribution. Their presence in the full
+upstream repository does not make them part of this copied framework tree.
+See upstream LICENSE and THIRD-PARTY-NOTICES for those components' attribution.
+
+Other runtime dependencies and downloaded model assets are supplied separately
+under their upstream terms. Bundled example data is attributed below.
 
 
 ================================================================================

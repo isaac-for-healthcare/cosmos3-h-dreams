@@ -1,13 +1,5 @@
 Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
-Cosmos3-H-Dreams and the included FlashDreams framework are licensed under the
-Apache License, Version 2.0. The full text follows and is also reproduced in
-LICENSES/Apache-2.0.txt. Per-file SPDX headers and REUSE.toml identify authorship
-and licensing for individual files.
-
-Third-party dependency attributions and source-level redistribution notices
-are documented in THIRD-PARTY-NOTICES.
-
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
