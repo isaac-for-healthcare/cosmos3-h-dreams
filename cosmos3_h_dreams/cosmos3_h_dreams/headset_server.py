@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Headset WebXR input and HTTPS/WebRTC video for the Cosmos3-H-Dreams session."""
+"""Headset WebXR input and HTTPS/MJPEG video for the Cosmos3-H-Dreams session."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ import ssl
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from aiohttp import WSMsgType, web
 from flashdreams.demo import CanonicalInputWindow
@@ -47,16 +47,12 @@ from .headset import HeadsetActionSource
 from .session import Cosmos3HDreamsSession
 from .session_config import load_session_config
 
-if TYPE_CHECKING:
-    from aiortc import RTCPeerConnection
-    from flashdreams.serving.webrtc.media import BufferedVideoTrack
-
 _WEB_DIR = Path(__file__).resolve().parent / "web"
 
 # Empirical left grip-to-pivot offset from a Meta Quest controller X-rotation trace, in metres.
 _LEFT_GRIP_PIVOT_OFFSET_M = (0.0, -0.02415, -0.04658)
 
-HEADSET_WEBRTC_PRESETS = {
+HEADSET_PRESETS = {
     "headset-base": {
         "headset_input_fps": 30.0,
         "display_fps": 20,
@@ -126,11 +122,11 @@ class LatestHeadsetFrames:
             frame = self._latest
             self._sampled_version = self._version
             self._next_sample_ns = now_ns + self._period_ns
-        return Observation(frame=frame, capture_ns=now_ns, source="headset-webrtc")
+        return Observation(frame=frame, capture_ns=now_ns, source="headset-mjpeg")
 
 
 class MjpegFrames:
-    """Convert model frames without importing a WebRTC track or its codecs."""
+    """Convert model frames for Pillow JPEG encoding."""
 
     def prepare_result_frames(self, result: StepResult) -> tuple[Any, ...]:
         video = result.video_chunk
@@ -143,14 +139,7 @@ class MjpegFrames:
             )
         )
 
-    async def flush(self) -> None:
-        """Leave playback invalidation to the server; no frames are queued here."""
-
-    async def close(self) -> None:
-        """Leave playback cleanup to the server; no transport is held here."""
-
-
-class HeadsetWebRTCServer:
+class HeadsetServer:
     """Bind one headset browser to the existing model session and video track."""
 
     def __init__(
@@ -159,13 +148,13 @@ class HeadsetWebRTCServer:
         session: Cosmos3HDreamsSession,
         frames: LatestHeadsetFrames,
         display_fps: int = 30,
-        video_transport: str = "webrtc",
+        video_transport: str = "mjpeg",
         overlap_playback: bool = True,
         scenes: dict[str, Cosmos3HDreamsConfig] | None = None,
         scene_labels: dict[str, str] | None = None,
     ) -> None:
-        if video_transport not in {"webrtc", "mjpeg"}:
-            raise ValueError("video_transport must be webrtc or mjpeg")
+        if video_transport != "mjpeg":
+            raise ValueError("video_transport must be mjpeg")
         self.scenes = scenes or {}
         self.scene_labels = scene_labels or {}
         self.active_scene = next(iter(self.scenes), None)
@@ -181,10 +170,7 @@ class HeadsetWebRTCServer:
         self._jpeg_version = 0
         self._jpeg_changed = asyncio.Condition()
         self.source: HeadsetActionSource | None = None
-        self.peer: RTCPeerConnection | None = None
-        self.track: BufferedVideoTrack | MjpegFrames | None = None
-        self.viewer_peer: RTCPeerConnection | None = None
-        self.viewer_track: BufferedVideoTrack | None = None
+        self.track: MjpegFrames | None = None
         self.socket: web.WebSocketResponse | None = None
         self._ready = asyncio.Event()
         self._producer: asyncio.Task[None] | None = None
@@ -218,112 +204,20 @@ class HeadsetWebRTCServer:
             self._producer.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._producer
-        await self.close_peer()
-        await self.close_viewer_peer()
+        await self.reset_video()
         if self.socket is not None:
             await self.socket.close()
         await asyncio.to_thread(self.session.close)
 
-    async def close_peer(self) -> None:
-        """Release the current video peer and its bounded frame queue."""
+    async def reset_video(self) -> None:
+        """Clear the current MJPEG image and invalidate in-flight playback."""
         self._ready.clear()
         self._last_publish_s = None
         async with self._jpeg_changed:
             self._jpeg = None
             self._jpeg_version += 1
             self._jpeg_changed.notify_all()
-        peer, self.peer = self.peer, None
-        track, self.track = self.track, None
-        if track is not None:
-            await track.close()
-        if peer is not None:
-            await peer.close()
-
-    async def close_viewer_peer(self) -> None:
-        peer, self.viewer_peer = self.viewer_peer, None
-        track, self.viewer_track = self.viewer_track, None
-        if track is not None:
-            await track.close()
-        if peer is not None:
-            await peer.close()
-
-    async def answer(self, sdp: str, offer_type: str) -> dict[str, str]:
-        """Negotiate a fresh video peer for the active headset socket."""
-        from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
-        from flashdreams.serving.webrtc.media import BufferedVideoTrack
-
-        await self.close_peer()
-        track = BufferedVideoTrack(
-            fps=self.display_fps,
-            maxsize=2 * self.session.actions_per_step,
-        )
-        peer = RTCPeerConnection(RTCConfiguration(iceServers=[]))
-        peer.addTrack(track)
-        self.track = track
-        self.peer = peer
-
-        @peer.on("connectionstatechange")
-        async def on_state_change() -> None:
-            if self.peer is peer and peer.connectionState in {
-                "failed",
-                "closed",
-                "disconnected",
-            }:
-                self._ready.clear()
-
-        try:
-            await peer.setRemoteDescription(
-                RTCSessionDescription(sdp=sdp, type=offer_type)
-            )
-            answer = await peer.createAnswer()
-            await peer.setLocalDescription(answer)
-        except Exception:
-            await self.close_peer()
-            raise
-        if self.socket is not None:
-            self._ready.set()
-        local = peer.localDescription
-        if local is None:
-            raise RuntimeError("WebRTC did not produce a local answer")
-        return {"sdp": local.sdp, "type": local.type}
-
-    async def answer_viewer(self, sdp: str, offer_type: str) -> dict[str, str]:
-        from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
-        from flashdreams.serving.webrtc.media import BufferedVideoTrack
-
-        await self.close_viewer_peer()
-        track = BufferedVideoTrack(
-            fps=self.display_fps,
-            maxsize=2 * self.session.actions_per_step,
-        )
-        peer = RTCPeerConnection(RTCConfiguration(iceServers=[]))
-        peer.addTrack(track)
-        self.viewer_track = track
-        self.viewer_peer = peer
-
-        @peer.on("connectionstatechange")
-        async def on_state_change() -> None:
-            if self.viewer_peer is peer and peer.connectionState in {
-                "failed",
-                "closed",
-                "disconnected",
-            }:
-                await self.close_viewer_peer()
-
-        try:
-            await peer.setRemoteDescription(
-                RTCSessionDescription(sdp=sdp, type=offer_type)
-            )
-            answer = await peer.createAnswer()
-            await peer.setLocalDescription(answer)
-        except Exception:
-            await self.close_viewer_peer()
-            raise
-        local = peer.localDescription
-        if local is None:
-            await self.close_viewer_peer()
-            raise RuntimeError("WebRTC did not produce a local answer")
-        return {"sdp": local.sdp, "type": local.type}
+        self.track = None
 
     async def select_scene(self, name: str) -> None:
         """Request a scene change at the next generation boundary."""
@@ -369,9 +263,6 @@ class HeadsetWebRTCServer:
                     else:
                         self.frames.clear()
                         self.active_scene = name
-                        for video_track in (self.track, self.viewer_track):
-                            if video_track is not None:
-                                await video_track.flush()
                         async with self._jpeg_changed:
                             self._jpeg = None
                             self._jpeg_version += 1
@@ -436,28 +327,18 @@ class HeadsetWebRTCServer:
                     )
                     if self._scene_request is not None:
                         continue
-                    if self.video_transport == "mjpeg":
-                        prepared = time.perf_counter()
-                        if playback is not None:
-                            await playback
-                        if self.track is track and self._ready.is_set():
-                            # Keep only the playing block and one prepared block.
-                            publish = self._publish_mjpeg(
-                                track, result, frames, cycle_started, prepared
-                            )
-                            if self.overlap_playback:
-                                playback = asyncio.create_task(publish)
-                            else:
-                                await publish
-                        if result.metadata.get("action_rows") == 0:
-                            await asyncio.sleep(0.25)
-                        continue
-                    await track.enqueue_frames(frames)
-                    viewer = self.viewer_track
-                    if viewer is not None:
-                        if viewer.qsize() + len(frames) > viewer.maxsize:
-                            await viewer.flush()
-                        await viewer.enqueue_frames(frames[-viewer.maxsize :])
+                    prepared = time.perf_counter()
+                    if playback is not None:
+                        await playback
+                    if self.track is track and self._ready.is_set():
+                        # Keep only the playing block and one prepared block.
+                        publish = self._publish_mjpeg(
+                            track, result, frames, cycle_started, prepared
+                        )
+                        if self.overlap_playback:
+                            playback = asyncio.create_task(publish)
+                        else:
+                            await publish
                 if result.metadata.get("action_rows") == 0:
                     await asyncio.sleep(0.25)
         except Exception:
@@ -548,17 +429,12 @@ class HeadsetWebRTCServer:
             )
 
 
-def create_app(manager: HeadsetWebRTCServer) -> web.Application:
-    """Serve the headset page, controller socket, and selected video transport."""
+def create_app(manager: HeadsetServer) -> web.Application:
+    """Serve the headset page, controller socket, and MJPEG video."""
     app = web.Application(client_max_size=64 * 1024)
 
     async def page(_: web.Request) -> web.Response:
         body = (_WEB_DIR / "headset.html").read_text()
-        if manager.video_transport == "mjpeg":
-            body = body.replace(
-                '<video id="video" autoplay muted playsinline></video>',
-                '<img id="video" alt="Live simulation" data-transport="mjpeg">',
-            )
         return web.Response(
             text=body,
             content_type="text/html",
@@ -583,11 +459,6 @@ def create_app(manager: HeadsetWebRTCServer) -> web.Application:
 
     async def viewer_page(_: web.Request) -> web.Response:
         body = (_WEB_DIR / "viewer.html").read_text()
-        if manager.video_transport == "mjpeg":
-            body = body.replace(
-                '<video id="video" autoplay muted playsinline></video>',
-                '<img id="video" alt="Live simulation" data-transport="mjpeg">',
-            )
         return web.Response(
             text=body,
             content_type="text/html",
@@ -602,32 +473,6 @@ def create_app(manager: HeadsetWebRTCServer) -> web.Application:
             headers={"Cache-Control": "no-store"},
         )
 
-    async def offer(request: web.Request) -> web.Response:
-        if manager.video_transport == "mjpeg":
-            raise web.HTTPConflict(reason="Video uses MJPEG; open /video")
-        if manager.socket is None:
-            raise web.HTTPConflict(reason="Open the headset controller socket first")
-        try:
-            payload = await request.json()
-            sdp, offer_type = payload["sdp"], payload["type"]
-        except (ValueError, TypeError, KeyError) as error:
-            raise web.HTTPBadRequest(reason="Expected an SDP offer") from error
-        if not isinstance(sdp, str) or not sdp or offer_type != "offer":
-            raise web.HTTPBadRequest(reason="Expected an SDP offer")
-        return web.json_response(await manager.answer(sdp, offer_type))
-
-    async def viewer_offer(request: web.Request) -> web.Response:
-        if manager.video_transport == "mjpeg":
-            raise web.HTTPConflict(reason="Video uses MJPEG; open /video")
-        try:
-            payload = await request.json()
-            sdp, offer_type = payload["sdp"], payload["type"]
-        except (ValueError, TypeError, KeyError) as error:
-            raise web.HTTPBadRequest(reason="Expected an SDP offer") from error
-        if not isinstance(sdp, str) or not sdp or offer_type != "offer":
-            raise web.HTTPBadRequest(reason="Expected an SDP offer")
-        return web.json_response(await manager.answer_viewer(sdp, offer_type))
-
     async def socket(request: web.Request) -> web.WebSocketResponse:
         if manager.socket is not None:
             raise web.HTTPConflict(reason="A Headset browser is already connected")
@@ -637,9 +482,8 @@ def create_app(manager: HeadsetWebRTCServer) -> web.Application:
         manager.frames.clear()
         if manager.source is not None:
             manager.source.reset_calibration()
-        if manager.video_transport == "mjpeg":
-            manager.track = MjpegFrames()
-            manager._ready.set()
+        manager.track = MjpegFrames()
+        manager._ready.set()
         try:
             async for message in ws:
                 if message.type != WSMsgType.TEXT:
@@ -662,12 +506,10 @@ def create_app(manager: HeadsetWebRTCServer) -> web.Application:
             manager.frames.clear()
             if manager.source is not None:
                 manager.source.reset_calibration()
-            await manager.close_peer()
+            await manager.reset_video()
         return ws
 
     async def video(request: web.Request) -> web.StreamResponse:
-        if manager.video_transport != "mjpeg":
-            raise web.HTTPConflict(reason="Start with --video-transport mjpeg")
         response = web.StreamResponse(
             headers={
                 "Content-Type": "multipart/x-mixed-replace; boundary=frame",
@@ -750,8 +592,6 @@ def create_app(manager: HeadsetWebRTCServer) -> web.Application:
     app.router.add_get("/viewer.js", viewer_script)
     app.router.add_get("/ws", socket)
     app.router.add_get("/video", video)
-    app.router.add_post("/headset/offer", offer)
-    app.router.add_post("/viewer/offer", viewer_offer)
     app.router.add_get("/healthz", health)
     app.router.add_post("/scene", select_scene)
     app.router.add_get("/scene/frame", scene_frame)
@@ -775,7 +615,7 @@ def main(argv: list[str] | None = None) -> None:
         argv: Command-line arguments, defaulting to the process arguments.
     """
     selector = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
-    selector.add_argument("--headset-config", choices=HEADSET_WEBRTC_PRESETS)
+    selector.add_argument("--headset-config", choices=HEADSET_PRESETS)
     selector.add_argument("--session-config", type=Path)
     selected, _ = selector.parse_known_args(argv)
     session_data = (
@@ -785,13 +625,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     headset_defaults = dict((session_data or {}).get("headset", {}))
     headset_preset = selected.headset_config or headset_defaults.pop("preset", None)
-    if headset_preset not in {None, *HEADSET_WEBRTC_PRESETS}:
+    if headset_preset not in {None, *HEADSET_PRESETS}:
         selector.error(f"unknown headset preset: {headset_preset}")
     parser = argparse.ArgumentParser(
-        description=(
-            "Serve Cosmos3-H-Dreams to a headset browser over HTTPS with MJPEG or WebRTC "
-            "connection."
-        ),
+        description="Serve Cosmos3-H-Dreams to a headset browser over HTTPS/MJPEG.",
         epilog=(
             "Model options such as --checkpoint, --initial-frame, --domain-id, "
             "and --fps match flashdreams-run cosmos3-h-dreams."
@@ -802,11 +639,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--cert", required="cert" not in headset_defaults)
     parser.add_argument("--key", required="key" not in headset_defaults)
     parser.add_argument("--config", choices=COSMOS3_H_DREAMS_PRESETS)
-    parser.add_argument("--headset-config", choices=HEADSET_WEBRTC_PRESETS)
+    parser.add_argument("--headset-config", choices=HEADSET_PRESETS)
     parser.add_argument("--display-fps", type=int, default=30)
-    parser.add_argument(
-        "--video-transport", choices=("webrtc", "mjpeg"), default="webrtc"
-    )
+    parser.add_argument("--video-transport", choices=("mjpeg",), default="mjpeg")
     parser.add_argument("--print-actions", action="store_true")
     parser.add_argument(
         "--headset-input-fps",
@@ -820,11 +655,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Generate the next MJPEG block while playing the current block",
     )
     headset_defaults.pop("preset", None)
-    parser.set_defaults(**HEADSET_WEBRTC_PRESETS.get(headset_preset, {}))
+    parser.set_defaults(**HEADSET_PRESETS.get(headset_preset, {}))
     parser.set_defaults(**headset_defaults)
     network, model_args = parser.parse_known_args(argv)
-    if network.video_transport not in {"webrtc", "mjpeg"}:
-        parser.error("video_transport must be webrtc or mjpeg")
+    if network.video_transport != "mjpeg":
+        parser.error("video_transport must be mjpeg")
     if not 1 <= network.port <= 65535:
         parser.error("--port must be between 1 and 65535")
     if network.display_fps <= 0:
@@ -857,7 +692,7 @@ def main(argv: list[str] | None = None) -> None:
         network.headset_input_fps if network.headset_input_fps is not None else config.fps
     )
     frames = LatestHeadsetFrames(fps=input_fps)
-    manager: HeadsetWebRTCServer
+    manager: HeadsetServer
 
     def source_factory(**kwargs: Any) -> HeadsetActionSource:
         source = HeadsetActionSource(
@@ -873,7 +708,7 @@ def main(argv: list[str] | None = None) -> None:
     if any(scene.actions is not None for scene in application.scenes.values()):
         parser.error("Headset server scenes must use live controller input, not actions")
     session = Cosmos3HDreamsSession(config=config, headset_source_factory=source_factory)
-    manager = HeadsetWebRTCServer(
+    manager = HeadsetServer(
         session=session,
         frames=frames,
         display_fps=network.display_fps,
@@ -884,13 +719,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     if config.normalizer is None:
         print(
-            "[headset-webrtc] no checkpoint normalizer supplied; "
+            "[headset-mjpeg] no checkpoint normalizer supplied; "
             "live action magnitudes are unverified"
         )
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls.load_cert_chain(network.cert, network.key)
     print(
-        f"[headset-webrtc] action/model rate: {config.fps:g} Hz; "
+        f"[headset-mjpeg] action/model rate: {config.fps:g} Hz; "
         f"acquisition: {'browser rate' if input_fps is None else str(input_fps) + ' Hz'}; "
         f"actions: recorded window; "
         f"video presentation: {network.display_fps} fps; "

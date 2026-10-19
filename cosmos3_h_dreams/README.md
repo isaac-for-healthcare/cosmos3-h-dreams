@@ -76,7 +76,7 @@ IDs require separate validation. Height and width must be divisible by 16.
 The bundled [real_time_2steps.yaml](configs/real_time_2steps.yaml) selects the
 last model preset and the independent `headset-base` transport preset. `headset-base`
 uses controller acquisition at up to 30 Hz and MJPEG playback at 20 fps. Without
-that headset preset, the server defaults to WebRTC at 30 display fps and acquisition
+that headset preset, the server defaults to MJPEG at 30 display fps and acquisition
 at the model rate. Changing display FPS only changes playback pacing; changing
 model FPS changes temporal conditioning.
 
@@ -185,9 +185,8 @@ are translation `14:17`, rotation `17:23`, trigger `23`, grip `24`, primary butt
 
 ### Video transport and remote access
 
-The example uses MJPEG over HTTPS. For WebRTC video, append
-`--video-transport webrtc`; the network must also allow the negotiated media
-connection. Both modes receive controller poses over a same-origin WebSocket.
+Video uses MJPEG over HTTPS. Controller poses arrive over a same-origin
+WebSocket.
 
 MJPEG can carry video and controls through a single TCP tunnel. From a PC that
 can reach a remote server:
@@ -198,9 +197,8 @@ ssh -N -o ExitOnForwardFailure=yes \
 ```
 
 Allow inbound TCP 8443 on that PC, use a certificate covering `<PC-LAN-IP>`, and
-open `https://<PC-LAN-IP>:8443/headset` on the headset. MJPEG uses more bandwidth
-than compressed WebRTC video. Slow viewers skip frames rather than accumulating
-an unbounded queue.
+open `https://<PC-LAN-IP>:8443/headset` on the headset. Slow viewers skip frames
+rather than accumulating an unbounded queue.
 
 ## Performance and diagnostics
 

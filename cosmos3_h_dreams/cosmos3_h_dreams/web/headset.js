@@ -16,7 +16,6 @@ let statusShownAt = 0;
 const enterButton = document.getElementById("enter-vr");
 const resetButton = document.getElementById("reset");
 let socket = null;
-let peer = null;
 let xrSession = null;
 let xrSpace = null;
 let gl = null;
@@ -43,52 +42,10 @@ function send(payload) {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
 }
 
-async function connectVideo() {
-  if (video.dataset.transport === "mjpeg") {
-    video.src = `/video?t=${Date.now()}`;
-    video.onerror = () => show("Video connection lost · Reconnect the page");
-    show("Controller: connected · Video: MJPEG");
-    return;
-  }
-  if (peer) peer.close();
-  const connection = new RTCPeerConnection();
-  peer = connection;
-  connection.addTransceiver("video", { direction: "recvonly" });
-  connection.ontrack = (event) => {
-    video.srcObject = event.streams[0] || new MediaStream([event.track]);
-    void video.play().catch((error) => show(`Video playback: ${error.message}`));
-  };
-  connection.onconnectionstatechange = () => {
-    if (peer !== connection) return;
-    show(`Controller: connected · Video: ${connection.connectionState}`);
-    if (connection.connectionState === "failed" || connection.connectionState === "disconnected") {
-      setTimeout(() => {
-        if (peer === connection && socket?.readyState === WebSocket.OPEN)
-          void connectVideo().catch((error) => show(error.message));
-      }, 1000);
-    }
-  };
-  await connection.setLocalDescription(await connection.createOffer());
-  // LAN host candidates are sufficient; wait until they are present in SDP.
-  if (connection.iceGatheringState !== "complete") {
-    await new Promise((resolve) => {
-      const done = () => {
-        if (connection.iceGatheringState === "complete") {
-          connection.removeEventListener("icegatheringstatechange", done);
-          resolve();
-        }
-      };
-      connection.addEventListener("icegatheringstatechange", done);
-      done();
-    });
-  }
-  const response = await fetch("/headset/offer", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(connection.localDescription),
-  });
-  if (!response.ok) throw new Error(`WebRTC offer failed: ${response.status} ${await response.text()}`);
-  await connection.setRemoteDescription(await response.json());
+function connectVideo() {
+  video.src = `/video?t=${Date.now()}`;
+  video.onerror = () => show("Video connection lost · Reconnect the page");
+  show("Controller: connected · Video: MJPEG");
 }
 
 function connect() {
@@ -96,7 +53,7 @@ function connect() {
   socket = new WebSocket(`${scheme}//${location.host}/ws`);
   socket.onopen = () => {
     show("Controller connected · Connecting video…");
-    void connectVideo().catch((error) => show(error.message));
+    connectVideo();
   };
   socket.onmessage = (event) => {
     try {
@@ -106,8 +63,7 @@ function connect() {
   };
   socket.onclose = () => {
     show("Connection lost · Reconnecting…");
-    if (peer) { peer.close(); peer = null; }
-    if (video.dataset.transport === "mjpeg") video.removeAttribute("src");
+    video.removeAttribute("src");
     setTimeout(connect, 1000);
   };
 }
@@ -162,9 +118,7 @@ function makeQuad() {
 
 function renderVideo(viewer, layer) {
   if (!viewer || !quad) return;
-  const hasFrame = video.dataset.transport === "mjpeg"
-    ? video.naturalWidth > 0
-    : video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0;
+  const hasFrame = video.naturalWidth > 0;
   if (hasFrame) {
     gl.bindTexture(gl.TEXTURE_2D, quad.texture);
     try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video); }

@@ -33,13 +33,13 @@ import pytest
 from aiohttp import MultipartReader
 from aiohttp.test_utils import TestClient, TestServer
 from cosmos3_h_dreams.headset import controller_frames_to_actions
-from cosmos3_h_dreams.headset_webrtc import (
+from cosmos3_h_dreams.headset_server import (
     LatestHeadsetFrames,
-    HeadsetWebRTCServer,
+    HeadsetServer,
     create_app,
 )
 
-from cosmos3_h_dreams import headset_webrtc as webrtc_module
+from cosmos3_h_dreams import headset_server as server_module
 
 pytestmark = pytest.mark.ci_cpu
 
@@ -66,8 +66,8 @@ def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
             from PIL import Image
             from aiohttp import MultipartReader
             from aiohttp.test_utils import TestClient, TestServer
-            from cosmos3_h_dreams.headset_webrtc import (
-                HeadsetWebRTCServer, LatestHeadsetFrames, MjpegFrames, create_app,
+            from cosmos3_h_dreams.headset_server import (
+                HeadsetServer, LatestHeadsetFrames, MjpegFrames, create_app,
             )
 
             video = torch.zeros((1, 4, 6, 3), dtype=torch.uint8)
@@ -85,7 +85,7 @@ def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
 
             async def exercise():
                 requirements = iter([SimpleNamespace(input_frame_count=1), None])
-                manager = HeadsetWebRTCServer(
+                manager = HeadsetServer(
                     session=SimpleNamespace(
                         config=SimpleNamespace(fps=10, profile=False),
                         init=lambda: None, close=lambda: None,
@@ -99,7 +99,7 @@ def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
                         response = await client.post(
                             route, json={'sdp': 'offer', 'type': 'offer'},
                         )
-                        assert response.status == 409
+                        assert response.status == 404
                     stream = await client.get('/video')
                     async with client.ws_connect('/ws'):
                         reader = MultipartReader.from_response(stream)
@@ -107,7 +107,6 @@ def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
                         image = Image.open(io.BytesIO(await part.read()))
                         assert image.size == (6, 4)
                         assert abs(image.getpixel((0, 0))[0] - 220) <= 3
-                        assert manager.peer is None and manager.viewer_peer is None
                     stream.close()
 
             asyncio.run(exercise())
@@ -137,18 +136,18 @@ def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
                 "--display-fps",
                 "10",
                 "--video-transport",
-                "webrtc",
+                "mjpeg",
                 "--no-overlap-playback",
                 "--fps",
                 "12",
             ],
             15,
             10,
-            "webrtc",
+            "mjpeg",
             False,
             12,
         ),
-        (None, [], 10, 30, "webrtc", True, 10),
+        (None, [], 10, 30, "mjpeg", True, 10),
     ],
 )
 def test_headset_preset_and_explicit_overrides(
@@ -168,7 +167,7 @@ def test_headset_preset_and_explicit_overrides(
         sys,
         "argv",
         [
-            "headset_webrtc",
+            "headset_server",
             "--config",
             "wan-taehv-chunk2-2steps-fademem-compile",
             "--cert",
@@ -184,19 +183,19 @@ def test_headset_preset_and_explicit_overrides(
         ],
     )
     monkeypatch.setattr(
-        webrtc_module.ssl,
+        server_module.ssl,
         "SSLContext",
         lambda _protocol: SimpleNamespace(load_cert_chain=lambda *_args: None),
     )
-    monkeypatch.setattr(webrtc_module, "create_app", lambda manager: manager)
+    monkeypatch.setattr(server_module, "create_app", lambda manager: manager)
     managers = []
     monkeypatch.setattr(
-        webrtc_module.web,
+        server_module.web,
         "run_app",
         lambda manager, **_kwargs: managers.append(manager),
     )
 
-    webrtc_module.main()
+    server_module.main()
 
     (manager,) = managers
     config = manager.session.config
@@ -216,7 +215,7 @@ def test_headset_preset_and_explicit_overrides(
     assert manager.display_fps == display_fps
     assert manager.video_transport == transport
     assert manager.overlap_playback is overlap
-    assert HeadsetWebRTCServer(
+    assert HeadsetServer(
         session=manager.session, frames=manager.frames
     ).overlap_playback
 
@@ -240,7 +239,7 @@ def test_browser_absolute_poses_drive_translation_and_jaw_without_rotation(
 ) -> None:
     clock_ns = 1_000_000_000
     monkeypatch.setattr(
-        "cosmos3_h_dreams.headset_webrtc.time.perf_counter_ns", lambda: clock_ns
+        "cosmos3_h_dreams.headset_server.time.perf_counter_ns", lambda: clock_ns
     )
     source = LatestHeadsetFrames(fps=sample_fps)
 
@@ -274,55 +273,6 @@ def test_browser_absolute_poses_drive_translation_and_jaw_without_rotation(
     assert tuple(action[17:23]) == pytest.approx((1, 0, 0, 0, 1, 0))
 
 
-def test_display_fps_is_independent_of_action_fps(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class FakePeer:
-        localDescription = SimpleNamespace(sdp="answer", type="answer")
-
-        def __init__(self, configuration: object) -> None:
-            assert configuration.iceServers == []
-
-        def addTrack(self, _track: object) -> None:
-            pass
-
-        def on(self, _event: str):
-            return lambda callback: callback
-
-        async def setRemoteDescription(self, _offer: object) -> None:
-            pass
-
-        async def createAnswer(self) -> object:
-            return self.localDescription
-
-        async def setLocalDescription(self, _answer: object) -> None:
-            pass
-
-        async def close(self) -> None:
-            pass
-
-    monkeypatch.setattr("aiortc.RTCPeerConnection", FakePeer)
-    frames = LatestHeadsetFrames(fps=10)
-    session = SimpleNamespace(config=SimpleNamespace(fps=10), actions_per_step=16)
-    manager = HeadsetWebRTCServer(session=session, frames=frames, display_fps=30)
-
-    async def check() -> None:
-        try:
-            await manager.answer("offer", "offer")
-            headset_track = manager.track
-            await manager.answer_viewer("offer", "offer")
-            assert frames._period_ns == 100_000_000
-            assert manager.track is headset_track
-            assert manager.viewer_track is not headset_track
-            assert manager.viewer_track is not None
-            assert manager.track.fps == 30
-        finally:
-            await manager.close_peer()
-            await manager.close_viewer_peer()
-
-    asyncio.run(check())
-
-
 def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -339,13 +289,13 @@ def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
     )
     frame = np.full((4, 6, 3), (220, 30, 50), dtype=np.uint8)
     monkeypatch.setattr(
-        webrtc_module.MjpegFrames,
+        server_module.MjpegFrames,
         "prepare_result_frames",
         lambda _track, _result: (frame,),
     )
 
     async def check() -> None:
-        manager = HeadsetWebRTCServer(
+        manager = HeadsetServer(
             session=session,
             frames=LatestHeadsetFrames(fps=10),
             video_transport="mjpeg",
@@ -359,7 +309,7 @@ def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
                 response = await client.post(
                     path, json={"sdp": "offer", "type": "offer"}
                 )
-                assert response.status == 409
+                assert response.status == 404
             streams = [await client.get("/video") for _ in range(2)]
             readers = [MultipartReader.from_response(stream) for stream in streams]
             async with client.ws_connect("/ws"):
@@ -372,9 +322,7 @@ def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
                     image = Image.open(io.BytesIO(jpeg))
                     assert image.size == (6, 4)
                     assert image.getpixel((0, 0)) == pytest.approx((220, 30, 50), abs=3)
-                assert manager.peer is None
-                assert manager.viewer_peer is None
-                assert isinstance(manager.track, webrtc_module.MjpegFrames)
+                assert isinstance(manager.track, server_module.MjpegFrames)
             for _ in range(20):
                 if manager.socket is None:
                     break
@@ -428,12 +376,12 @@ def test_mjpeg_profile_measures_cycle_and_block_boundary(monkeypatch, capsys) ->
         now += 0.01
         return b"jpeg"
 
-    monkeypatch.setattr(webrtc_module.asyncio, "to_thread", inline)
-    monkeypatch.setattr(webrtc_module.asyncio, "sleep", sleep)
-    monkeypatch.setattr(webrtc_module.time, "perf_counter", lambda: now)
-    monkeypatch.setattr(webrtc_module, "encode_rgb_frame_to_jpeg", encode)
+    monkeypatch.setattr(server_module.asyncio, "to_thread", inline)
+    monkeypatch.setattr(server_module.asyncio, "sleep", sleep)
+    monkeypatch.setattr(server_module.time, "perf_counter", lambda: now)
+    monkeypatch.setattr(server_module, "encode_rgb_frame_to_jpeg", encode)
     requirements = iter([SimpleNamespace(input_frame_count=2)] * 2 + [None])
-    manager = HeadsetWebRTCServer(
+    manager = HeadsetServer(
         session=SimpleNamespace(
             config=SimpleNamespace(fps=10, profile=True),
             next_step_requirements=lambda: next(requirements),
@@ -493,10 +441,10 @@ def test_mjpeg_overlap_is_bounded_and_preserves_frame_order(monkeypatch, overlap
                 await release.wait()
             return function(*args)
 
-        monkeypatch.setattr(webrtc_module.asyncio, "to_thread", to_thread)
-        monkeypatch.setattr(webrtc_module, "encode_rgb_frame_to_jpeg", encode)
+        monkeypatch.setattr(server_module.asyncio, "to_thread", to_thread)
+        monkeypatch.setattr(server_module, "encode_rgb_frame_to_jpeg", encode)
         requirements = iter([SimpleNamespace(input_frame_count=2)] * 3 + [None])
-        manager = HeadsetWebRTCServer(
+        manager = HeadsetServer(
             session=SimpleNamespace(
                 config=SimpleNamespace(fps=10, profile=False),
                 next_step_requirements=lambda: next(requirements),
@@ -508,7 +456,7 @@ def test_mjpeg_overlap_is_bounded_and_preserves_frame_order(monkeypatch, overlap
             overlap_playback=overlap,
         )
         manager.socket = object()
-        manager.track = webrtc_module.MjpegFrames()
+        manager.track = server_module.MjpegFrames()
         manager.track.prepare_result_frames = lambda result: (
             2 * result.step_index,
             2 * result.step_index + 1,
@@ -529,7 +477,7 @@ def test_mjpeg_overlap_is_bounded_and_preserves_frame_order(monkeypatch, overlap
         finally:
             producer.cancel()
             await asyncio.gather(producer, return_exceptions=True)
-            await manager.close_peer()
+            await manager.reset_video()
 
     asyncio.run(check())
 
@@ -574,10 +522,10 @@ def test_mjpeg_overlap_discards_stale_playback(monkeypatch, transition):
                     raise
             return function(*args)
 
-        monkeypatch.setattr(webrtc_module.asyncio, "to_thread", to_thread)
-        monkeypatch.setattr(webrtc_module, "encode_rgb_frame_to_jpeg", encode)
+        monkeypatch.setattr(server_module.asyncio, "to_thread", to_thread)
+        monkeypatch.setattr(server_module, "encode_rgb_frame_to_jpeg", encode)
         requirements = iter([SimpleNamespace(input_frame_count=2)] * 2 + [None])
-        manager = HeadsetWebRTCServer(
+        manager = HeadsetServer(
             session=SimpleNamespace(
                 config=SimpleNamespace(fps=10, profile=False),
                 next_step_requirements=lambda: next(requirements),
@@ -589,7 +537,7 @@ def test_mjpeg_overlap_discards_stale_playback(monkeypatch, transition):
             overlap_playback=True,
         )
         manager.socket = object()
-        track = webrtc_module.MjpegFrames()
+        track = server_module.MjpegFrames()
         track.prepare_result_frames = lambda result: (
             2 * result.step_index,
             2 * result.step_index + 1,
@@ -607,9 +555,9 @@ def test_mjpeg_overlap_discards_stale_playback(monkeypatch, transition):
                 assert playback_cancelled.is_set()
             else:
                 if transition in {"disconnect", "reconnect"}:
-                    await manager.close_peer()
+                    await manager.reset_video()
                     if transition == "reconnect":
-                        manager.track = webrtc_module.MjpegFrames()
+                        manager.track = server_module.MjpegFrames()
                         manager._ready.set()
                     release_encode.set()
                 release_step.set()
@@ -627,44 +575,7 @@ def test_mjpeg_overlap_discards_stale_playback(monkeypatch, transition):
         finally:
             producer.cancel()
             await asyncio.gather(producer, return_exceptions=True)
-            await manager.close_peer()
-
-    asyncio.run(check())
-
-
-def test_generated_frames_reach_headset_and_viewer(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def inline(function, *args):
-        return function(*args)
-
-    monkeypatch.setattr(webrtc_module.asyncio, "to_thread", inline)
-    requirements = iter([SimpleNamespace(input_frame_count=1), None])
-    result = SimpleNamespace(metadata={"action_rows": 1})
-    session = SimpleNamespace(
-        config=SimpleNamespace(fps=10),
-        actions_per_step=2,
-        next_step_requirements=lambda: next(requirements),
-        step=lambda _window: result,
-    )
-    manager = HeadsetWebRTCServer(session=session, frames=LatestHeadsetFrames(fps=10))
-
-    async def check() -> None:
-        from flashdreams.serving.webrtc.media import BufferedVideoTrack
-
-        manager.socket = object()
-        manager.track = BufferedVideoTrack(fps=30, maxsize=4)
-        manager.viewer_track = BufferedVideoTrack(fps=30, maxsize=4)
-        frame = np.zeros((2, 2, 3), dtype=np.uint8)
-        manager.track.prepare_result_frames = lambda _result: (frame,)
-        manager._ready.set()
-        try:
-            await manager._generate()
-            assert manager.track.qsize() == 1
-            assert manager.viewer_track.qsize() == 1
-        finally:
-            await manager.close_peer()
-            await manager.close_viewer_peer()
+            await manager.reset_video()
 
     asyncio.run(check())
 
@@ -673,7 +584,7 @@ def test_generated_frames_reach_headset_and_viewer(
 def test_headset_page_and_offer_boundary(monkeypatch, namespace_package) -> None:
     if namespace_package:
         package = sys.modules["cosmos3_h_dreams"]
-        outer = str(Path(webrtc_module.__file__).resolve().parent.parent)
+        outer = str(Path(server_module.__file__).resolve().parent.parent)
         monkeypatch.setattr(
             package,
             "__spec__",
@@ -687,7 +598,8 @@ def test_headset_page_and_offer_boundary(monkeypatch, namespace_package) -> None
         assert not files("cosmos3_h_dreams").joinpath("web/headset.html").is_file()
 
     class FakeManager:
-        video_transport = "webrtc"
+        video_transport = "mjpeg"
+        _ready = asyncio.Event()
         runtime_ready = False
         socket = None
         source = None
@@ -700,7 +612,7 @@ def test_headset_page_and_offer_boundary(monkeypatch, namespace_package) -> None
         async def close(self) -> None:
             pass
 
-        async def close_peer(self) -> None:
+        async def reset_video(self) -> None:
             pass
 
     async def check() -> None:
@@ -715,7 +627,8 @@ def test_headset_page_and_offer_boundary(monkeypatch, namespace_package) -> None
             assert "Live view of the headset session" in await viewer.text()
             viewer_script = await client.get("/viewer.js")
             assert viewer_script.status == 200
-            assert "/viewer/offer" in await viewer_script.text()
+            assert "/video" in await viewer_script.text()
+            assert "RTCPeerConnection" not in await viewer_script.text()
             assert "/ws" not in await viewer_script.text()
             script = await client.get("/headset.js")
             assert script.status == 200
@@ -725,9 +638,9 @@ def test_headset_page_and_offer_boundary(monkeypatch, namespace_package) -> None
             offer = await client.post(
                 "/headset/offer", json={"sdp": "bad", "type": "offer"}
             )
-            assert offer.status == 409
+            assert offer.status == 404
             viewer_offer = await client.post("/viewer/offer", json={"type": "answer"})
-            assert viewer_offer.status == 400
+            assert viewer_offer.status == 404
             async with client.ws_connect("/ws") as ws:
                 await ws.send_json(
                     {
@@ -769,7 +682,7 @@ def test_model_startup_status_is_served_while_loading(fail):
             pass
 
     async def check():
-        manager = HeadsetWebRTCServer(session=Session(), frames=LatestHeadsetFrames(fps=10))
+        manager = HeadsetServer(session=Session(), frames=LatestHeadsetFrames(fps=10))
         try:
             async with TestClient(TestServer(create_app(manager))) as client:
                 assert await asyncio.to_thread(entered.wait, 2)
@@ -814,7 +727,7 @@ def test_scene_gallery_serves_only_configured_frames(tmp_path):
     Image.new("RGB", (2, 2)).save(frame)
 
     class Manager:
-        video_transport = "webrtc"
+        video_transport = "mjpeg"
 
         def __init__(self):
             self.scenes = {"frame &.png": SimpleNamespace(initial_frame=frame)}
@@ -854,7 +767,7 @@ def test_generation_failure_is_logged_and_reported(caplog):
             next_step_requirements=lambda: SimpleNamespace(input_frame_count=1),
             step=fail,
         )
-        manager = HeadsetWebRTCServer(session=session, frames=LatestHeadsetFrames(fps=10))
+        manager = HeadsetServer(session=session, frames=LatestHeadsetFrames(fps=10))
         manager.track = object()
         manager.socket = object()
         manager.runtime_ready = True

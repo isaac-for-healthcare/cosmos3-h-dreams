@@ -305,7 +305,7 @@ class HeadsetSource:
         if self._ssl_context is None:
             raise ValueError(
                 "Headset input requires an HTTPS server or --headset-relay-url; "
-                "use python -m cosmos3_h_dreams.headset_webrtc for browser setup."
+                "use python -m cosmos3_h_dreams.headset_server for browser setup."
             )
         server = WebXRServer(
             on_message=self._store.consume,

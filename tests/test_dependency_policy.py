@@ -105,3 +105,15 @@ def test_workspace_uses_only_headless_opencv() -> None:
         "Workspace packages must use only opencv-python-headless; found:\n"
         + "\n".join(f"  {violation}" for violation in violations)
     )
+
+
+def test_workspace_does_not_depend_on_pyav_or_aiortc() -> None:
+    forbidden = {"av", "aiortc"}
+    for pyproject in _workspace_pyprojects():
+        config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        for section, requirement in _requirement_strings(config):
+            assert _normalized_requirement_name(requirement) not in forbidden, (
+                f"{pyproject} [{section}]: {requirement}"
+            )
+    lock = tomllib.loads((_ROOT / "uv.lock").read_text(encoding="utf-8"))
+    assert not forbidden.intersection(package["name"] for package in lock["package"])

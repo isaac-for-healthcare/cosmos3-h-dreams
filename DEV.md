@@ -46,6 +46,6 @@ and scene assets are supplied separately.
 
 The product dependency on FlashDreams is resolved locally by the workspace.
 Before distributing the product wheel on its own, verify that its unpinned
-`flashdreams[serving]` dependency resolves to a compatible framework release and
+`flashdreams` dependency resolves to a compatible framework release and
 that users receive the configuration examples and attribution files they need.
 A local build alone does not establish that a standalone installation works.

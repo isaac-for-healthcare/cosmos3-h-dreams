@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> None:
             f"Available applications: {', '.join(applications)}"
         )
 
-    from .headset_webrtc import main as run_headset
+    from .headset_server import main as run_headset
 
     run_headset(args[1:])
 

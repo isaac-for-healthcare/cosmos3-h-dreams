@@ -59,12 +59,13 @@ urllib3                MIT          https://github.com/urllib3/urllib3
 Cosmos3-H-Dreams runtime dependencies
 ================================================================================
 
+aiohttp                Apache-2.0 AND MIT
+                                    https://github.com/aio-libs/aiohttp
 pillow                 MIT-CMU      https://github.com/python-pillow/Pillow
-pyopenssl              Apache-2.0   https://github.com/pyca/pyopenssl
 websockets             BSD-3-Clause https://github.com/python-websockets/websockets
 
-The product also depends on the included Apache-2.0 FlashDreams package with
-its serving extra (listed below). Model and tokenizer assets are fetched
+The product also depends on the included Apache-2.0 FlashDreams package.
+Model and tokenizer assets are fetched
 separately and retain their upstream terms; product checkpoints and scene data
 are not shipped.
 
@@ -100,61 +101,25 @@ only when an RTX preset is selected, and is not redistributed as source in
 this repository.
 
 ================================================================================
-Serving: required by Cosmos3-H-Dreams, optional in FlashDreams
+Video codec functionality
 ================================================================================
 
-aiohttp                Apache-2.0 AND MIT
-                                    https://github.com/aio-libs/aiohttp
-aiortc                 BSD-3-Clause https://github.com/aiortc/aiortc
+Headset and viewer video uses Pillow JPEG encoding over HTTPS/MJPEG.
+The project does not declare or install aiortc or PyAV (av). The copied
+framework retains unused WebRTC source modules; they are not part of the
+product's supported transport or dependency set.
 
-The serving extra supplies aiohttp and aiortc. Their transitive dependencies
-are resolved in uv.lock and supplied under their own licenses.
-
-Selected serving transitive dependencies (not direct product requirements):
-
-av                     BSD-3-Clause https://github.com/PyAV-Org/PyAV/blob/v16.1.0/LICENSE.txt
-cryptography           Apache-2.0 OR BSD-3-Clause
-                                    https://github.com/pyca/cryptography/blob/50.0.1/LICENSE
-
-These are the Python projects' licenses. Binary wheels may also bundle native
-libraries, including FFmpeg in PyAV wheels and OpenSSL in cryptography wheels;
-retain and review the notices supplied with the actual binary distributions.
-
-================================================================================
-Video/audio codec functionality
-================================================================================
-
-The WebRTC path supports H.264 and VP8 through aiortc/PyAV;
-MP4 output calls host FFmpeg with libx264, and the optional OpenCV benchmark
-writer requests MPEG-4 Part 2 (mp4v). MJPEG uses Pillow JPEG encoding.
-aiortc also contains Opus, G.711 PCMA/PCMU and G.722 codec functionality,
-although the product's headset path adds video tracks only.
-
+MP4 replay output passes raw RGB frames over a pipe to a separate host
+FFmpeg subprocess configured with libx264. It does not use PyAV.
 H.264 software encoding: x264, GPL-2.0-or-later (commercial licensing is
-separately offered by its owner). The inspected PyAV wheel also bundles
-x265 (HEVC), whose OSS terms are GPL-2.0-or-later.
+separately offered by its owner).
     https://ffmpeg.org/legal.html
     https://x264.org/licensing/
-    https://github.com/videolan/x265/blob/master/COPYING
-VP8/VP9: libvpx, BSD-3-Clause.
-    https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/LICENSE
-Opus: libopus, BSD-3-Clause, with separate published patent terms.
-    https://opus-codec.org/license/
-MPEG-4 Part 2, G.711 and G.722 implementations are supplied through FFmpeg;
-the license depends on the particular FFmpeg build described below.
+
+The optional OpenCV benchmark writer requests MPEG-4 Part 2 (mp4v).
+Its FFmpeg build and bundled component licenses are described below.
 JPEG/MJPEG: Pillow is MIT-CMU; native JPEG component notices are reproduced
 in LICENSES/MIT-CMU.txt and retained in Pillow's own distribution.
-
-PyAV av 16.1.0, inspected CPython 3.12 manylinux x86_64 wheel:
-    The Python binding is BSD-3-Clause. Its bundled libavcodec 62.11.100
-    reports "LGPL version 3 or later" and enables x264/x265. Both libraries
-    are physically bundled. The referenced upstream build patches FFmpeg's
-    configure script to move x264/x265 out of the GPL-library check.
-    Record the GPL codec components separately; the runtime LGPL label does
-    not establish that the binary bundle is free of GPL components. The
-    applicable combined-distribution terms require separate license review.
-    https://github.com/PyAV-Org/PyAV/blob/v16.1.0/scripts/ffmpeg-latest.json
-    https://github.com/PyAV-Org/pyav-ffmpeg/blob/8.0.1-3/patches/ffmpeg.patch
 
 opencv-python-headless 4.13.0.92, inspected manylinux x86_64 wheel:
     OpenCV is Apache-2.0. Its bundled libavcodec 62.11.100 reports
@@ -163,9 +128,9 @@ opencv-python-headless 4.13.0.92, inspected manylinux x86_64 wheel:
     retain their own notices. This build does not enable x264/x265.
     https://github.com/opencv/opencv-python/blob/4.x/LICENSE-3RD-PARTY.txt
 
-PyNvVideoCodec is an optional dynamically discovered backend, not a declared
-or locked dependency of this workspace. The included framework's NVENC path
-requests H.264. PyNvVideoCodec 2.1.0 is MIT-licensed; Video Codec SDK and NVIDIA
+The retained, unused framework NVENC implementation references PyNvVideoCodec,
+which is not a declared or locked dependency and is not used by the product.
+That implementation requests H.264. PyNvVideoCodec 2.1.0 is MIT-licensed; Video Codec SDK and NVIDIA
 driver/runtime terms remain separate. No version is pinned by this project.
     https://pypi.org/project/pynvvideocodec/2.1.0/
     https://developer.nvidia.com/pynvvideocodec
@@ -219,11 +184,6 @@ certifi 2026.4.22       MPL-2.0
 
 regendoc 0.9.0         MPL-2.0
     https://pypi.org/project/regendoc/0.9.0/
-
-google-crc32c 1.8.0     Apache-2.0
-    https://github.com/googleapis/python-crc32c/blob/v1.8.0/LICENSE
-    The native CRC32C library has its own notices; the Python project license
-    does not replace licenses of native libraries bundled in wheels.
 
 matplotlib-inline 0.2.1 BSD-3-Clause
     https://github.com/ipython/matplotlib-inline/blob/0.2.1/LICENSE

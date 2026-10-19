@@ -13,11 +13,11 @@ import pytest
 import yaml
 from cosmos3_h_dreams.app import Cosmos3HDreamsApplication
 from cosmos3_h_dreams.config import Cosmos3HDreamsConfig
-from cosmos3_h_dreams.headset_webrtc import LatestHeadsetFrames, HeadsetWebRTCServer
+from cosmos3_h_dreams.headset_server import LatestHeadsetFrames, HeadsetServer
 from cosmos3_h_dreams.session import Cosmos3HDreamsSession
 from cosmos3_h_dreams.session_config import load_session_config
 
-from cosmos3_h_dreams import headset_webrtc
+from cosmos3_h_dreams import headset_server
 from cosmos3_h_dreams import session as session_module
 from cosmos3_h_dreams import session_config as session_config_module
 
@@ -68,6 +68,7 @@ def test_yaml_paths_and_scene_defaults(tmp_path, monkeypatch):
         (lambda data: data["runtime"].update(chonk_size=2), "unknown runtime"),
         (lambda data: data["headset"].update(preset=23), "preset must"),
         (lambda data: data["headset"].update(display_fps=True), "integer"),
+        (lambda data: data["headset"].update(video_transport="webrtc"), "must be mjpeg"),
         (lambda data: data["scenes"].append(dict(data["scenes"][0])), "unique"),
         (lambda data: data["scenes"][0].update(height=288), "unknown scene"),
         (lambda data: data["scenes"][0].update(domain_id=True), "Invalid type"),
@@ -89,7 +90,7 @@ def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch):
         sys,
         "argv",
         [
-            "headset_webrtc",
+            "headset_server",
             "--session-config",
             str(path),
             "--config",
@@ -104,18 +105,18 @@ def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch):
     )
     certificates = []
     monkeypatch.setattr(
-        headset_webrtc.ssl,
+        headset_server.ssl,
         "SSLContext",
         lambda _: SimpleNamespace(
             load_cert_chain=lambda *args: certificates.append(args)
         ),
     )
-    monkeypatch.setattr(headset_webrtc, "create_app", lambda manager: manager)
+    monkeypatch.setattr(headset_server, "create_app", lambda manager: manager)
     managers = []
     monkeypatch.setattr(
-        headset_webrtc.web, "run_app", lambda manager, **_: managers.append(manager)
+        headset_server.web, "run_app", lambda manager, **_: managers.append(manager)
     )
-    headset_webrtc.main()
+    headset_server.main()
     (manager,) = managers
     assert certificates == [(str(tmp_path / "cert.pem"), str(tmp_path / "key.pem"))]
     assert manager.display_fps == 17
@@ -175,7 +176,7 @@ def test_scene_request_wakes_idle_generation_and_handles_failure():
             if config is configs["a"]:
                 raise ValueError("bad scene")
 
-        manager = HeadsetWebRTCServer(
+        manager = HeadsetServer(
             session=SimpleNamespace(switch_scene=switch),
             frames=LatestHeadsetFrames(fps=10),
             scenes=configs,
@@ -188,11 +189,11 @@ def test_scene_request_wakes_idle_generation_and_handles_failure():
             await asyncio.wait_for(manager.select_scene("b"), timeout=2)
             assert calls == ["wake", configs["b"]]
             assert manager.active_scene == "b" and manager._scene_request is None
-            with pytest.raises(headset_webrtc.web.HTTPInternalServerError):
+            with pytest.raises(headset_server.web.HTTPInternalServerError):
                 await asyncio.wait_for(manager.select_scene("a"), timeout=2)
             assert manager.active_scene == "b"
             assert manager._scene_request is None
-            with pytest.raises(headset_webrtc.web.HTTPBadRequest):
+            with pytest.raises(headset_server.web.HTTPBadRequest):
                 await manager.select_scene({"name": "a"})
         finally:
             manager._producer.cancel()
@@ -205,7 +206,6 @@ def test_switch_discards_inflight_output_and_flushes_video():
     async def check():
         entered = threading.Event()
         release = threading.Event()
-        flushed = []
         prepared = []
         manager = None
 
@@ -217,10 +217,7 @@ def test_switch_discards_inflight_output_and_flushes_video():
         def switch(_config):
             manager._ready.clear()
 
-        async def flush():
-            flushed.append(True)
-
-        manager = HeadsetWebRTCServer(
+        manager = HeadsetServer(
             session=SimpleNamespace(
                 config=SimpleNamespace(fps=10),
                 next_step_requirements=lambda: SimpleNamespace(input_frame_count=1),
@@ -231,10 +228,7 @@ def test_switch_discards_inflight_output_and_flushes_video():
             scenes={"a": object(), "b": object()},
         )
         manager.source = SimpleNamespace(request_restart=release.set)
-        manager.track = SimpleNamespace(
-            flush=flush, prepare_result_frames=prepared.append
-        )
-        manager.viewer_track = SimpleNamespace(flush=flush)
+        manager.track = SimpleNamespace(prepare_result_frames=prepared.append)
         manager.socket = object()
         manager._jpeg = b"old video"
         manager.runtime_ready = True
@@ -244,7 +238,7 @@ def test_switch_discards_inflight_output_and_flushes_video():
             assert await asyncio.to_thread(entered.wait, 2)
             await asyncio.wait_for(manager.select_scene("b"), timeout=2)
             assert manager.active_scene == "b"
-            assert flushed == [True, True] and prepared == []
+            assert prepared == []
             assert manager._jpeg is None
         finally:
             release.set()

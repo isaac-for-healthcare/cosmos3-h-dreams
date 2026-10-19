@@ -47,8 +47,8 @@ For a product dependency change:
    license text. For upgrades, check whether terms or bundled components changed.
 
 Distinguish dependencies required by Cosmos3-H-Dreams from optional FlashDreams
-extras. The product requests `flashdreams[serving]`, so serving is required for
-this product even though it is optional in the framework.
+extras. The product uses MJPEG and declares aiohttp directly; it does not request
+WebRTC dependencies or the framework serving extra.
 
 Routine dependency changes belong in THIRD-PARTY-NOTICES. Update NOTICE when
 project or redistributed-source attribution changes, rather than copying the

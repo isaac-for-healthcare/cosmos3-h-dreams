@@ -17,7 +17,7 @@
 
 import pytest
 
-from cosmos3_h_dreams import cli, headset_webrtc
+from cosmos3_h_dreams import cli, headset_server
 
 pytestmark = pytest.mark.ci_cpu
 
@@ -27,7 +27,7 @@ def test_unknown_application_lists_supported_name(name, capsys, monkeypatch):
     def fail_if_started(*args):
         pytest.fail("Unknown application started the headset server")
 
-    monkeypatch.setattr(headset_webrtc, "main", fail_if_started)
+    monkeypatch.setattr(headset_server, "main", fail_if_started)
     with pytest.raises(SystemExit) as error:
         cli.main([name, "--session-config", "does-not-exist.yaml"])
     assert error.value.code == 2
@@ -39,7 +39,7 @@ def test_unknown_application_lists_supported_name(name, capsys, monkeypatch):
 
 def test_valid_application_forwards_options_unchanged(monkeypatch):
     calls = []
-    monkeypatch.setattr(headset_webrtc, "main", calls.append)
+    monkeypatch.setattr(headset_server, "main", calls.append)
     options = ["--session-config", "session.yaml", "--checkpoint", "model.pt"]
     cli.main(["headset", *options])
     cli.main(["headset", "--help"])

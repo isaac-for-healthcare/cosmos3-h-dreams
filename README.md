@@ -56,7 +56,7 @@ track both controllers, release the triggers, and hold still for calibration.
 Open `https://<server-LAN-IP>:8443/viewer` on a PC to watch the same simulation.
 
 The example uses two denoising steps, TAEHV decoding, compiled FadeMem caching,
-and HTTPS/MJPEG video. Add `--video-transport webrtc` to use WebRTC video.
+and HTTPS/MJPEG video.
 Initial compilation takes longer than subsequent generation.
 
 For recorded actions and MP4 output, see [offline replay](cosmos3_h_dreams/README.md#offline-replay).

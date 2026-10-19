@@ -139,6 +139,8 @@ def load_session_config(path: Path) -> dict[str, Any]:
             raise ValueError(f"headset.{key} must be a boolean")
         elif key in {"host", "video_transport"} and not isinstance(value, str):
             raise ValueError(f"headset.{key} must be a string")
+    if headset.get("video_transport", "mjpeg") != "mjpeg":
+        raise ValueError("headset.video_transport must be mjpeg")
     if "checkpoint" in runtime:
         checkpoint = runtime["checkpoint"]
         # Registry names and URIs retain their meaning; filesystem paths start at the repo root.
