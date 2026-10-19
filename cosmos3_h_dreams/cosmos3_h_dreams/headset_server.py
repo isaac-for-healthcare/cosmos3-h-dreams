@@ -56,7 +56,6 @@ HEADSET_PRESETS = {
     "headset-base": {
         "headset_input_fps": 30.0,
         "display_fps": 20,
-        "video_transport": "mjpeg",
     },
 }
 
@@ -148,13 +147,10 @@ class HeadsetServer:
         session: Cosmos3HDreamsSession,
         frames: LatestHeadsetFrames,
         display_fps: int = 30,
-        video_transport: str = "mjpeg",
         overlap_playback: bool = True,
         scenes: dict[str, Cosmos3HDreamsConfig] | None = None,
         scene_labels: dict[str, str] | None = None,
     ) -> None:
-        if video_transport != "mjpeg":
-            raise ValueError("video_transport must be mjpeg")
         self.scenes = scenes or {}
         self.scene_labels = scene_labels or {}
         self.active_scene = next(iter(self.scenes), None)
@@ -163,7 +159,6 @@ class HeadsetServer:
         self.session = session
         self.frames = frames
         self.display_fps = display_fps
-        self.video_transport = video_transport
         self.overlap_playback = overlap_playback
         self._last_publish_s: float | None = None
         self._jpeg: bytes | None = None
@@ -641,7 +636,6 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", choices=COSMOS3_H_DREAMS_PRESETS)
     parser.add_argument("--headset-config", choices=HEADSET_PRESETS)
     parser.add_argument("--display-fps", type=int, default=30)
-    parser.add_argument("--video-transport", choices=("mjpeg",), default="mjpeg")
     parser.add_argument("--print-actions", action="store_true")
     parser.add_argument(
         "--headset-input-fps",
@@ -658,8 +652,6 @@ def main(argv: list[str] | None = None) -> None:
     parser.set_defaults(**HEADSET_PRESETS.get(headset_preset, {}))
     parser.set_defaults(**headset_defaults)
     network, model_args = parser.parse_known_args(argv)
-    if network.video_transport != "mjpeg":
-        parser.error("video_transport must be mjpeg")
     if not 1 <= network.port <= 65535:
         parser.error("--port must be between 1 and 65535")
     if network.display_fps <= 0:
@@ -712,7 +704,6 @@ def main(argv: list[str] | None = None) -> None:
         session=session,
         frames=frames,
         display_fps=network.display_fps,
-        video_transport=network.video_transport,
         overlap_playback=network.overlap_playback,
         scenes=application.scenes,
         scene_labels=application.scene_labels,
@@ -729,7 +720,7 @@ def main(argv: list[str] | None = None) -> None:
         f"acquisition: {'browser rate' if input_fps is None else str(input_fps) + ' Hz'}; "
         f"actions: recorded window; "
         f"video presentation: {network.display_fps} fps; "
-        f"transport: {network.video_transport}; overlap playback: {network.overlap_playback}"
+        f"overlap playback: {network.overlap_playback}"
     )
     print(f"Open https://<workstation-LAN-IP>:{network.port}/headset in the headset browser")
     print(f"Open https://<workstation-LAN-IP>:{network.port}/viewer on a PC")

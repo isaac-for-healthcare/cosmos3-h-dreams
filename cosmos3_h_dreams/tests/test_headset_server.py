@@ -92,7 +92,7 @@ def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
                         next_step_requirements=lambda: next(requirements),
                         step=lambda window: result,
                     ),
-                    frames=LatestHeadsetFrames(fps=10), video_transport='mjpeg',
+                    frames=LatestHeadsetFrames(fps=10),
                 )
                 async with TestClient(TestServer(create_app(manager))) as client:
                     for route in ('/headset/offer', '/viewer/offer'):
@@ -125,9 +125,9 @@ def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
 
 
 @pytest.mark.parametrize(
-    "headset_config, flags, input_fps, display_fps, transport, overlap, model_fps",
+    "headset_config, flags, input_fps, display_fps, overlap, model_fps",
     [
-        ("headset-base", [], 30, 20, "mjpeg", True, 10),
+        ("headset-base", [], 30, 20, True, 10),
         (
             "headset-base",
             [
@@ -135,19 +135,16 @@ def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
                 "15",
                 "--display-fps",
                 "10",
-                "--video-transport",
-                "mjpeg",
                 "--no-overlap-playback",
                 "--fps",
                 "12",
             ],
             15,
             10,
-            "mjpeg",
             False,
             12,
         ),
-        (None, [], 10, 30, "mjpeg", True, 10),
+        (None, [], 10, 30, True, 10),
     ],
 )
 def test_headset_preset_and_explicit_overrides(
@@ -157,7 +154,6 @@ def test_headset_preset_and_explicit_overrides(
     flags,
     input_fps,
     display_fps,
-    transport,
     overlap,
     model_fps,
 ):
@@ -213,7 +209,6 @@ def test_headset_preset_and_explicit_overrides(
         0 if input_fps is None else round(1e9 / input_fps)
     )
     assert manager.display_fps == display_fps
-    assert manager.video_transport == transport
     assert manager.overlap_playback is overlap
     assert HeadsetServer(
         session=manager.session, frames=manager.frames
@@ -298,7 +293,6 @@ def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
         manager = HeadsetServer(
             session=session,
             frames=LatestHeadsetFrames(fps=10),
-            video_transport="mjpeg",
             display_fps=30,
         )
         async with TestClient(TestServer(create_app(manager))) as client:
@@ -389,7 +383,6 @@ def test_mjpeg_profile_measures_cycle_and_block_boundary(monkeypatch, capsys) ->
         ),
         frames=LatestHeadsetFrames(fps=10),
         display_fps=20,
-        video_transport="mjpeg",
         overlap_playback=False,
     )
 
@@ -452,7 +445,6 @@ def test_mjpeg_overlap_is_bounded_and_preserves_frame_order(monkeypatch, overlap
             ),
             frames=LatestHeadsetFrames(fps=10),
             display_fps=1000,
-            video_transport="mjpeg",
             overlap_playback=overlap,
         )
         manager.socket = object()
@@ -533,7 +525,6 @@ def test_mjpeg_overlap_discards_stale_playback(monkeypatch, transition):
             ),
             frames=LatestHeadsetFrames(fps=10),
             display_fps=1000,
-            video_transport="mjpeg",
             overlap_playback=True,
         )
         manager.socket = object()
@@ -598,7 +589,6 @@ def test_headset_page_and_offer_boundary(monkeypatch, namespace_package) -> None
         assert not files("cosmos3_h_dreams").joinpath("web/headset.html").is_file()
 
     class FakeManager:
-        video_transport = "mjpeg"
         _ready = asyncio.Event()
         runtime_ready = False
         socket = None
@@ -727,8 +717,6 @@ def test_scene_gallery_serves_only_configured_frames(tmp_path):
     Image.new("RGB", (2, 2)).save(frame)
 
     class Manager:
-        video_transport = "mjpeg"
-
         def __init__(self):
             self.scenes = {"frame &.png": SimpleNamespace(initial_frame=frame)}
 

@@ -68,7 +68,7 @@ def test_yaml_paths_and_scene_defaults(tmp_path, monkeypatch):
         (lambda data: data["runtime"].update(chonk_size=2), "unknown runtime"),
         (lambda data: data["headset"].update(preset=23), "preset must"),
         (lambda data: data["headset"].update(display_fps=True), "integer"),
-        (lambda data: data["headset"].update(video_transport="webrtc"), "must be mjpeg"),
+        (lambda data: data["headset"].update(video_transport="mjpeg"), "unknown headset"),
         (lambda data: data["scenes"].append(dict(data["scenes"][0])), "unique"),
         (lambda data: data["scenes"][0].update(height=288), "unknown scene"),
         (lambda data: data["scenes"][0].update(domain_id=True), "Invalid type"),
@@ -120,7 +120,6 @@ def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch):
     (manager,) = managers
     assert certificates == [(str(tmp_path / "cert.pem"), str(tmp_path / "key.pem"))]
     assert manager.display_fps == 17
-    assert manager.video_transport == "mjpeg"
     assert manager.frames._period_ns == round(1e9 / 30)
     assert all(
         config.fps == 12 and config.chunk_size == 2
