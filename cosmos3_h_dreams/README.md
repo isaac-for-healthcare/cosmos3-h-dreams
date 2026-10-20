@@ -83,6 +83,8 @@ that headset preset, the server defaults to MJPEG at 30 display fps and acquisit
 at the model rate. Changing display FPS only changes playback pacing; changing
 model FPS changes temporal conditioning.
 
+We recommend using the 4-step checkpoint (`c3-h-d_4-step_model_bf16.safetensors`) with the `wan-taehv-chunk2-fademem-compile` preset, and the 2-step checkpoint (`c3-h-d_2-step_model_bf16.safetensors`) with the `wan-taehv-chunk2-2steps-fademem-compile` preset. Mixing them may result in suboptimal visual quality.
+
 ## Offline replay
 
 ```bash
@@ -90,7 +92,7 @@ uv run --no-sync --package flashdreams-cosmos3-h-dreams \
   flashdreams-run cosmos3-h-dreams \
   --output mp4 --output-path replay.mp4 \
   --config wan-taehv-chunk2-block-compile \
-  --checkpoint checkpoints/model.pt \
+  --checkpoint checkpoints/model.safetensors \
   --initial-frame assets/example_data/scenes/example_frame.png \
   --actions assets/example_data/scenes/trajectory.npy
 ```
@@ -145,7 +147,7 @@ generation history and calibration.
 ```yaml
 runtime:
   preset: wan-taehv-chunk2-2steps-fademem-compile
-  checkpoint: data_local/checkpoints/model.pt
+  checkpoint: data_local/checkpoints/model.safetensors
 
 headset:
   preset: headset-base

@@ -31,7 +31,7 @@ uv sync --package flashdreams-cosmos3-h-dreams --locked
 
 ### 2. Prepare the session
 
-Place your checkpoint at `data_local/checkpoints/model.pt` and scene PNGs under
+Place your checkpoint at `data_local/checkpoints/model.safetensors` and scene PNGs under
 `data_local/scenes/`. The bundled
 [real-time configuration](cosmos3_h_dreams/configs/real_time_2steps.yaml) uses the available example data in [example_data/scenes](./assets/example_data/scenes/); edit
 that file if your assets live elsewhere.
@@ -50,6 +50,7 @@ openssl req -x509 -newkey rsa:2048 -nodes \
 ```bash
 uv run --no-sync cosmos3-h-dreams-run headset \
   --session-config cosmos3_h_dreams/configs/real_time_2steps.yaml
+  --checkpoint PATH/TO/CHECKPOINT/c3-h-d_2-step_model_bf16.safetensors
 ```
 
 Open `https://<server-LAN-IP>:8443/headset` in the headset browser, accept the certificate

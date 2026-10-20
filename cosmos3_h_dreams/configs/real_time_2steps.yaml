@@ -4,7 +4,7 @@
 # Paths are relative to the launch directory. Model weights and timing are shared across scenes.
 runtime:
   preset: wan-taehv-chunk2-2steps-fademem-compile
-  checkpoint: data_local/checkpoints/model_2step.pt
+  checkpoint: data_local/checkpoints/c3-h-d_2-step_model_bf16.safetensors
 
 headset:
   preset: headset-base
