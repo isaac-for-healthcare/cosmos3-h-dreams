@@ -49,7 +49,7 @@ openssl req -x509 -newkey rsa:2048 -nodes \
 
 ```bash
 uv run --no-sync cosmos3-h-dreams-run headset \
-  --session-config cosmos3_h_dreams/configs/real_time_2steps.yaml
+  --session-config cosmos3_h_dreams/configs/real_time_2steps.yaml \
   --checkpoint PATH/TO/CHECKPOINT/c3-h-d_2-step_model_bf16.safetensors
 ```
 
