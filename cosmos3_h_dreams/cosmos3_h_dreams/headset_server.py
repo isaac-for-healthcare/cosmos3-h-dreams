@@ -171,6 +171,11 @@ class HeadsetServer:
         self._producer: asyncio.Task[None] | None = None
         self._closed = False
         self.runtime_ready = False
+        self.token_emitter = None
+        self.token_descriptor = None
+        self.token_seed_pending = False
+        self.token_chunk = 0
+        self.restart_requested = False
 
     async def start(self) -> None:
         """Load the model and begin the asynchronous generation loop."""
@@ -290,11 +295,31 @@ class HeadsetServer:
                 if self.socket is None or track is None:
                     self._ready.clear()
                     continue
+                if self.restart_requested:
+                    await asyncio.to_thread(self.session.reset)
+                    self.restart_requested = False
                 requirements = self.session.next_step_requirements()
                 if requirements is None:
                     if playback is not None:
                         await playback
-                    return
+                        playback = None
+                    if self.token_descriptor is None:
+                        return
+                    await asyncio.to_thread(self.session.reset)
+                    if self.token_emitter is not None:
+                        await self.socket.close(code=1000, message=b"Replay complete; reconnect to restart")
+                    else:
+                        self._ready.clear()
+                    continue
+                emitter = self.token_emitter
+                if emitter is not None and self.token_seed_pending:
+                    model, _ = self.session._require_runtime()
+                    seed = model._frame_zero_latent(self.session._require_scene())
+                    seed = model._crop_decode_latent(seed).permute(1, 0, 2, 3).contiguous()
+                    if not await self._emit_token(emitter, seed, is_keyframe=True):
+                        continue
+                    self.token_chunk += 1
+                    self.token_seed_pending = False
                 window = CanonicalInputWindow(
                     window=TimeWindow(
                         start_s=0.0,
@@ -303,7 +328,10 @@ class HeadsetServer:
                 )
                 cycle_started = time.perf_counter()
                 try:
-                    result = await asyncio.to_thread(self.session.step, window)
+                    if emitter is None:
+                        result = await asyncio.to_thread(self.session.step, window)
+                    else:
+                        result = await asyncio.to_thread(self.session.step, window, decode=False)
                 except RuntimeError:
                     if self._closed:
                         return
@@ -317,6 +345,16 @@ class HeadsetServer:
                     playback = None
                     self._last_publish_s = None
                 if self.track is track and self._ready.is_set():
+                    if emitter is not None and result.layout is None:
+                        for latent in result.output.split(1):
+                            if not await self._emit_token(emitter, latent):
+                                break
+                            self.token_chunk += 1
+                        logging.getLogger(__name__).info(
+                            "[stream] mode=raw_tokens step=%s wire=raw_f16 shape=%s server_decode=False",
+                            result.step_index, tuple(result.output.shape),
+                        )
+                        continue
                     frames = await asyncio.to_thread(
                         track.prepare_result_frames, result
                     )
@@ -351,6 +389,30 @@ class HeadsetServer:
                 playback.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await playback
+
+    async def _emit_token(self, emitter, latent, *, is_keyframe=False) -> bool:
+        """Bound backpressure and release a disconnected token producer."""
+        send = asyncio.create_task(emitter.emit_chunk(
+            latent, chunk_index=self.token_chunk, is_keyframe=is_keyframe,
+        ))
+        deadline = asyncio.get_running_loop().time() + 300
+        try:
+            while emitter is self.token_emitter and not self._closed:
+                done, _ = await asyncio.wait({send}, timeout=1)
+                if done:
+                    try:
+                        await send
+                    except ConnectionError:
+                        return False
+                    return True
+                if asyncio.get_running_loop().time() > deadline:
+                    await self.socket.close(code=1011, message=b"Token decode acknowledgment timed out")
+                    return False
+            return False
+        finally:
+            if not send.done():
+                send.cancel()
+            await asyncio.gather(send, return_exceptions=True)
 
     async def _publish_mjpeg(
         self,
@@ -472,12 +534,28 @@ def create_app(manager: HeadsetServer) -> web.Application:
         if manager.socket is not None:
             raise web.HTTPConflict(reason="A Headset browser is already connected")
         ws = web.WebSocketResponse(max_msg_size=64 * 1024, heartbeat=5.0)
+        mode = request.query.get("mode", "pixels")
+        if mode not in {"pixels", "raw_tokens"}:
+            raise web.HTTPBadRequest(reason="Unknown streaming mode")
+        if mode == "raw_tokens" and manager.token_descriptor is None:
+            raise web.HTTPServiceUnavailable(reason="Token decoder is not ready")
         await ws.prepare(request)
         manager.socket = ws
         manager.frames.clear()
         if manager.source is not None:
             manager.source.reset_calibration()
         manager.track = MjpegFrames()
+        manager.restart_requested = manager.token_descriptor is not None
+        if mode == "raw_tokens":
+            from flashdreams.serving.token_stream import TokenFrameEmitter, RawFloat16TokenCodecConfig
+
+            manager.token_emitter = TokenFrameEmitter(
+                ws, codec=RawFloat16TokenCodecConfig().setup(),
+                fps=manager.display_fps, flow_window_size=2,
+                extra_header={"vae_model": manager.token_descriptor},
+            )
+            manager.token_seed_pending = True
+        logging.getLogger(__name__).info("[stream] connected mode=%s", mode)
         manager._ready.set()
         try:
             async for message in ws:
@@ -487,7 +565,17 @@ def create_app(manager: HeadsetServer) -> web.Application:
                     payload = json.loads(message.data)
                     if not isinstance(payload, dict):
                         raise TypeError("message must be an object")
-                    if payload.get("type") == "reset":
+                    if payload.get("type") == "token_frame_ack" and manager.token_emitter is not None:
+                        chunk = payload.get("chunk_id")
+                        if type(chunk) is not int or chunk < 0:
+                            raise ValueError("Invalid chunk acknowledgment")
+                        manager.token_emitter.handle_ack(chunk)
+                    elif payload.get("type") == "keys" and hasattr(manager.source, "set_keys"):
+                        manager.source.set_keys(payload.get("keys"))
+                    elif payload.get("type") == "reset":
+                        if manager.token_emitter is not None:
+                            await ws.close(code=1012, message=b"Reconnect to reset token decoder state")
+                            break
                         if manager.source is not None:
                             manager.source.request_restart()
                     else:
@@ -497,6 +585,7 @@ def create_app(manager: HeadsetServer) -> web.Application:
                         {"type": "error", "message": "Invalid controller frame"}
                     )
         finally:
+            manager.token_emitter = None
             manager.socket = None
             manager.frames.clear()
             if manager.source is not None:
@@ -555,6 +644,8 @@ def create_app(manager: HeadsetServer) -> web.Application:
             name = payload["name"]
         except (ValueError, KeyError, TypeError) as error:
             raise web.HTTPBadRequest(reason="Expected a scene name") from error
+        if manager.token_emitter is not None:
+            raise web.HTTPConflict(reason="Stop the token stream before switching scenes")
         await manager.select_scene(name)
         return web.json_response({"active_scene": manager.active_scene})
 
@@ -570,6 +661,7 @@ def create_app(manager: HeadsetServer) -> web.Application:
                 "ready": manager.runtime_ready,
                 "headset_connected": manager.socket is not None,
                 "model_status": manager.session.model_status,
+                **({"controls": "keyboard" if hasattr(manager.source, "set_keys") else "replay" if manager.session.config.actions is not None else "headset"} if manager.token_descriptor is not None else {}),
                 "scenes": [
                     {"name": name, "label": manager.scene_labels.get(name, name)}
                     for name in manager.scenes

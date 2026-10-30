@@ -2,6 +2,8 @@ NVIDIA Cosmos3-H-Dreams
 Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 Includes the NVIDIA FlashDreams framework.
+Includes token-stream transport and browser decoding adapted from NVIDIA
+FlashDreams commit ab1c5698daf098bdb7111a6d0d11012151a64dc9 (Apache-2.0).
 
 The source code is licensed under the Apache License, Version 2.0;
 the full license text is reproduced in LICENSE at the repository root

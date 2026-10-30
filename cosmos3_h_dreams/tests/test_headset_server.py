@@ -591,6 +591,8 @@ def test_headset_page_and_offer_boundary(monkeypatch, namespace_package) -> None
     class FakeManager:
         _ready = asyncio.Event()
         runtime_ready = False
+        token_descriptor = None
+        token_emitter = None
         socket = None
         source = None
         frames = LatestHeadsetFrames(fps=10.0)

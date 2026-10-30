@@ -65,6 +65,19 @@ pillow                 MIT-CMU      https://github.com/python-pillow/Pillow
 websockets             BSD-3-Clause https://github.com/python-websockets/websockets
 
 The product also depends on the included Apache-2.0 FlashDreams package.
+The optional token-stream extra uses ONNX (Apache-2.0),
+https://github.com/onnx/onnx, to export the browser decoder. The browser loads
+onnxruntime-web 1.30.0 (MIT, Microsoft Corporation) from jsDelivr:
+https://github.com/microsoft/onnxruntime. These runtime assets are downloaded
+separately, not redistributed in this source tree.
+
+Token framing/codec/emitter, TAEHV ONNX export, and browser token_stream code
+are copied or adapted from NVIDIA FlashDreams commit
+ab1c5698daf098bdb7111a6d0d11012151a64dc9 (dev/ksheth/video_token_streaming_v2),
+https://github.com/NVIDIA/flashdreams, under Apache-2.0. Copyright (c) 2026
+NVIDIA CORPORATION & AFFILIATES. Modifications cover Cosmos3 decoder priming,
+readiness, bounded acknowledgments, keyboard messages, and export compatibility.
+
 Model and tokenizer assets are fetched separately and retain their upstream
 terms. Product checkpoints and user-provided scene/action assets are supplied
 separately. This repository does include two example assets:

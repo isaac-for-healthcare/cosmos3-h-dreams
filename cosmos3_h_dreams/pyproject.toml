@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+token-stream = ["onnx>=1.17"]
 
 [project.scripts]
 cosmos3-h-dreams-run = "cosmos3_h_dreams.cli:main"
@@ -37,7 +38,7 @@ include = ["cosmos3_h_dreams*"]
 exclude = ["tests"]
 
 [tool.setuptools.package-data]
-cosmos3_h_dreams = ["web/*.html", "web/*.js"]
+cosmos3_h_dreams = ["web/*.html", "web/*.js", "web/token_stream/*.js", "web/token_stream/*/*.js"]
 "cosmos3_h_dreams._runtime.hand_client" = ["webxr/*.html", "webxr/*.js"]
 
 [tool.uv]

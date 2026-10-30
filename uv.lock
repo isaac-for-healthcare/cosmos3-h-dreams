@@ -1,15 +1,11 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12, <3.15"
 resolution-markers = [
-    "sys_platform == 'win32' and extra != 'group-11-flashdreams-cuda12' and extra == 'group-11-flashdreams-cuda13'",
-    "platform_machine != 's390x' and sys_platform != 'win32' and extra != 'group-11-flashdreams-cuda12' and extra == 'group-11-flashdreams-cuda13'",
-    "platform_machine == 's390x' and sys_platform != 'win32' and extra != 'group-11-flashdreams-cuda12' and extra == 'group-11-flashdreams-cuda13'",
-    "sys_platform == 'win32' and extra != 'extra-11-flashdreams-dev' and extra == 'group-11-flashdreams-cuda12' and extra != 'group-11-flashdreams-cuda13'",
-    "sys_platform != 'win32' and extra != 'extra-11-flashdreams-dev' and extra == 'group-11-flashdreams-cuda12' and extra != 'group-11-flashdreams-cuda13'",
-    "sys_platform == 'win32' and extra != 'group-11-flashdreams-cuda12' and extra != 'group-11-flashdreams-cuda13'",
-    "platform_machine != 's390x' and sys_platform != 'win32' and extra != 'group-11-flashdreams-cuda12' and extra != 'group-11-flashdreams-cuda13'",
-    "platform_machine == 's390x' and sys_platform != 'win32' and extra != 'group-11-flashdreams-cuda12' and extra != 'group-11-flashdreams-cuda13'",
+    "platform_machine != 's390x' and sys_platform == 'win32'",
+    "platform_machine == 's390x' and sys_platform == 'win32'",
+    "platform_machine != 's390x' and sys_platform != 'win32'",
+    "platform_machine == 's390x' and sys_platform != 'win32'",
 ]
 conflicts = [[
     { package = "flashdreams", group = "cuda12" },
@@ -361,7 +357,8 @@ name = "cuda-bindings"
 version = "12.9.7"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "sys_platform != 'win32'",
+    "platform_machine != 's390x' and sys_platform != 'win32'",
+    "platform_machine == 's390x' and sys_platform != 'win32'",
 ]
 dependencies = [
     { name = "cuda-pathfinder", marker = "(sys_platform != 'win32' and extra == 'group-11-flashdreams-cuda12') or (extra == 'extra-11-flashdreams-dev' and extra == 'group-11-flashdreams-cuda12') or (extra == 'group-11-flashdreams-cuda12' and extra == 'group-11-flashdreams-cuda13')" },
@@ -423,7 +420,8 @@ name = "cuda-toolkit"
 version = "12.8.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "sys_platform != 'win32'",
+    "platform_machine != 's390x' and sys_platform != 'win32'",
+    "platform_machine == 's390x' and sys_platform != 'win32'",
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d4/c8/7dce3a0b15b42a3b58e7d96eb22a687d3bf2c44e01d149a6874629cd9938/cuda_toolkit-12.8.1-py2.py3-none-any.whl", hash = "sha256:adc7906af4ecbf9a352f9dca5734eceb21daec281ccfcf5675e1d2f724fc2cba", size = 2283, upload-time = "2025-08-13T02:03:07.842Z" },
@@ -577,6 +575,7 @@ wheels = [
 [[package]]
 name = "flashdreams"
 source = { editable = "flashdreams" }
+default-groups = ["cuda13"]
 dependencies = [
     { name = "boto3" },
     { name = "botocore" },
@@ -711,16 +710,20 @@ dependencies = [
 dev = [
     { name = "pytest" },
 ]
+token-stream = [
+    { name = "onnx" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "flashdreams", editable = "flashdreams" },
+    { name = "onnx", marker = "extra == 'token-stream'", specifier = ">=1.17" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "websockets", specifier = ">=16.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "token-stream"]
 
 [[package]]
 name = "fonttools"
@@ -1366,7 +1369,7 @@ name = "ml-dtypes"
 version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform != 'win32'" },
+    { name = "numpy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/4a/c27b42ed9b1c7d13d9ba8b6905dece787d6259152f2309338aed29b2447b/ml_dtypes-0.5.4.tar.gz", hash = "sha256:8ab06a50fb9bf9666dd0fe5dfb4676fa2b0ac0f31ecff72a6c3af8e22c063453", size = 692314, upload-time = "2025-11-17T22:32:31.031Z" }
 wheels = [
@@ -1940,10 +1943,10 @@ name = "onnx"
 version = "1.21.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ml-dtypes", marker = "sys_platform != 'win32'" },
-    { name = "numpy", marker = "sys_platform != 'win32'" },
-    { name = "protobuf", marker = "sys_platform != 'win32'" },
-    { name = "typing-extensions", marker = "sys_platform != 'win32'" },
+    { name = "ml-dtypes" },
+    { name = "numpy" },
+    { name = "protobuf" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c5/93/942d2a0f6a70538eea042ce0445c8aefd46559ad153469986f29a743c01c/onnx-1.21.0.tar.gz", hash = "sha256:4d8b67d0aaec5864c87633188b91cc520877477ec0254eda122bef8be43cd764", size = 12074608, upload-time = "2026-03-27T21:33:36.118Z" }
 wheels = [
@@ -2962,7 +2965,8 @@ name = "torch"
 version = "2.11.0+cu128"
 source = { registry = "https://download.pytorch.org/whl/cu128" }
 resolution-markers = [
-    "sys_platform != 'win32'",
+    "platform_machine != 's390x' and sys_platform != 'win32'",
+    "platform_machine == 's390x' and sys_platform != 'win32'",
 ]
 dependencies = [
     { name = "cuda-bindings", version = "12.9.7", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'linux' and extra == 'group-11-flashdreams-cuda12') or (extra == 'extra-11-flashdreams-dev' and extra == 'group-11-flashdreams-cuda12') or (extra == 'group-11-flashdreams-cuda12' and extra == 'group-11-flashdreams-cuda13')" },
@@ -3003,7 +3007,8 @@ name = "torch"
 version = "2.11.0+cu130"
 source = { registry = "https://download.pytorch.org/whl/cu130" }
 resolution-markers = [
-    "sys_platform == 'win32'",
+    "platform_machine != 's390x' and sys_platform == 'win32'",
+    "platform_machine == 's390x' and sys_platform == 'win32'",
 ]
 dependencies = [
     { name = "filelock", marker = "sys_platform == 'win32' or (extra == 'extra-11-flashdreams-dev' and extra == 'group-11-flashdreams-cuda12') or (extra == 'group-11-flashdreams-cuda12' and extra == 'group-11-flashdreams-cuda13')" },
@@ -3073,7 +3078,8 @@ name = "torchvision"
 version = "0.26.0+cu128"
 source = { registry = "https://download.pytorch.org/whl/cu128" }
 resolution-markers = [
-    "sys_platform != 'win32'",
+    "platform_machine != 's390x' and sys_platform != 'win32'",
+    "platform_machine == 's390x' and sys_platform != 'win32'",
 ]
 dependencies = [
     { name = "numpy", marker = "sys_platform != 'win32'" },
@@ -3103,7 +3109,8 @@ name = "torchvision"
 version = "0.26.0+cu130"
 source = { registry = "https://download.pytorch.org/whl/cu130" }
 resolution-markers = [
-    "sys_platform == 'win32'",
+    "platform_machine != 's390x' and sys_platform == 'win32'",
+    "platform_machine == 's390x' and sys_platform == 'win32'",
 ]
 dependencies = [
     { name = "numpy", marker = "sys_platform == 'win32'" },

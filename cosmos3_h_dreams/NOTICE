@@ -3,3 +3,8 @@ Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 This package is licensed under the Apache License, Version 2.0; the full
 license text is reproduced in LICENSE.
+
+Includes browser token streaming adapted from NVIDIA FlashDreams commit
+ab1c5698daf098bdb7111a6d0d11012151a64dc9, Copyright (c) 2026 NVIDIA CORPORATION
+& AFFILIATES, under Apache-2.0. The browser downloads ONNX Runtime Web 1.30.0
+separately (MIT, Microsoft Corporation; https://github.com/microsoft/onnxruntime).

@@ -57,7 +57,11 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         config: Cosmos3HDreamsConfig,
         model_factory: ModelFactory = Cosmos3HDreamsModel,
         headset_source_factory: HeadsetSourceFactory = HeadsetActionSource,
+        eager_warmup_steps: int = 0,
     ) -> None:
+        if eager_warmup_steps < 0:
+            raise ValueError("eager_warmup_steps must be non-negative")
+        self._eager_warmup_steps = eager_warmup_steps
         self.config = config
         self._model_factory = model_factory
         self._headset_source_factory = headset_source_factory
@@ -176,6 +180,16 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
             )
             self.model_status = "Model compiled"
         else:
+            if self._eager_warmup_steps:
+                self.model_status = "Warming GPU kernels…"
+                print(f"[cosmos3-h-dreams] {self.model_status}", flush=True)
+                started = time.perf_counter()
+                rollout.prewarm_rollout(self._eager_warmup_steps, profile=True)
+                print(
+                    f"[cosmos3-h-dreams] eager warmup completed in "
+                    f"{time.perf_counter() - started:.1f}s; rollout reset",
+                    flush=True,
+                )
             self.model_status = "Model ready"
         print(f"[cosmos3-h-dreams] {self.model_status}", flush=True)
 
@@ -227,7 +241,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
             steady_output_frame_count=rows,
         )
 
-    def step(self, inputs: CanonicalInputWindow) -> StepResult:
+    def step(self, inputs: CanonicalInputWindow, *, decode: bool = True) -> StepResult:
         """Generate the next chunk from the selected action source."""
         if inputs.values:
             raise ValueError("Cosmos3-H-Dreams consumes no host-provided inputs.")
@@ -263,9 +277,10 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         started = time.perf_counter()
         latents = rollout.step(actions, profile=self.config.profile)
         model_finished = time.perf_counter()
-        video = model.decode_tensor(torch.cat(latents, dim=1))
-        if self.config.profile and video.is_cuda:
-            torch.cuda.current_stream(video.device).synchronize()
+        latent = torch.cat(latents, dim=1)
+        video = model.decode_tensor(latent) if decode else None
+        if self.config.profile and latent.is_cuda:
+            torch.cuda.current_stream(latent.device).synchronize()
         finished = time.perf_counter()
         metrics = {
             **rollout.last_timing,
@@ -278,11 +293,13 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
             self._profile_steps.append(
                 {name: float(value) for name, value in metrics.items()}
             )
-        result = StepResult.from_video_chunk(
+        result = StepResult(
             step_index=self._step_index,
-            video_chunk=video,
-            layout="tchw",
+            output=video if decode else model._crop_decode_latent(latent).permute(1, 0, 2, 3).contiguous(),
+            layout="tchw" if decode else None,
+            frame_count=0 if decode else rows,
             metadata={
+                "streaming_mode": "pixels" if decode else "raw_tokens",
                 "action_start": self._rows_consumed,
                 "action_rows": rows,
                 "action_capture_ns": getattr(
