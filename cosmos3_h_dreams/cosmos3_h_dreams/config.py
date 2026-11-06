@@ -208,6 +208,9 @@ class Cosmos3HDreamsConfig:
     overlap_cache_update: bool = False
     """Update fixed-buffer caches on a side CUDA stream."""
 
+    defer_cache_refresh: bool = False
+    """Experimental: submit FadeMem refresh after pixel preparation."""
+
     reuse_cache_rope: bool = False
     """Experimental: reuse positional factors across FadeMem layers."""
 
@@ -288,6 +291,7 @@ class Cosmos3HDreamsConfig:
             fademem_merge_selection=self.fademem_merge_selection,
             window_frames=self.window_frames,
             overlap_cache_update=self.overlap_cache_update,
+            defer_cache_refresh=self.defer_cache_refresh,
             reuse_cache_rope=self.reuse_cache_rope,
             compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,

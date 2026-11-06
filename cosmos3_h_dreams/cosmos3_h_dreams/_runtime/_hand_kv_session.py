@@ -21,6 +21,7 @@ token space, and the chunk shares a single uniform timestep.
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import TYPE_CHECKING, cast
 
@@ -112,6 +113,7 @@ def validate_cache_options(
     fademem_merge_selection: str = "age",
     window_frames: int = DEFAULT_WINDOW_FRAMES,
     overlap_cache_update: bool = False,
+    defer_cache_refresh: bool = False,
     reuse_cache_rope: bool = False,
     compile_cache_refresh: bool = False,
     compile_denoise: bool = False,
@@ -178,6 +180,11 @@ def validate_cache_options(
             "valid_length_cache_attention requires PyTorch varlen FlashAttention"
         )
     device_type = torch.device(device).type
+    if defer_cache_refresh:
+        if cache_mode != "fademem":
+            raise ValueError("defer_cache_refresh requires cache_mode='fademem'")
+        if not overlap_cache_update or device_type != "cuda":
+            raise ValueError("defer_cache_refresh requires CUDA and overlap_cache_update=True")
     if reuse_cache_rope and cache_mode != "fademem":
         raise ValueError("reuse_cache_rope requires cache_mode='fademem'")
     if compile_cache_refresh:
@@ -232,6 +239,8 @@ class HandKVSession:
             the frames can be decoded while the cache catches up. Requires
             ``cache_mode="block"`` or ``"fademem"``; a no-op off CUDA.
         reuse_cache_rope: Reuse positional factors across FadeMem layers.
+        defer_cache_refresh: Keep one clean chunk until its pixels are prepared;
+            submit it on the same inference owner before the next cache read.
         compile_cache_refresh: Experimental, default-off compilation of stateless
             refresh layers once FadeMem is full. Cache fill and mutation stay
             eager. Requires CUDA and ``compile_denoise`` for hidden warmup.
@@ -286,6 +295,7 @@ class HandKVSession:
         fademem_beta: float = 0.3,
         fademem_merge_selection: str = "age",
         overlap_cache_update: bool = False,
+        defer_cache_refresh: bool = False,
         reuse_cache_rope: bool = False,
         compile_cache_refresh: bool = False,
         compile_denoise: bool = False,
@@ -355,6 +365,7 @@ class HandKVSession:
         self.cache_mode = str(cache_mode)
         self.cache_refresh_mode = str(cache_refresh_mode)
         self.overlap_cache_update = bool(overlap_cache_update)
+        self.defer_cache_refresh = bool(defer_cache_refresh)
         self.reuse_cache_rope = bool(reuse_cache_rope)
         self.compile_cache_refresh = bool(compile_cache_refresh)
         self.compile_denoise = bool(compile_denoise)
@@ -369,6 +380,7 @@ class HandKVSession:
             fademem_merge_selection=fademem_merge_selection,
             window_frames=max(0, int(window_frames)),
             overlap_cache_update=self.overlap_cache_update,
+            defer_cache_refresh=self.defer_cache_refresh,
             reuse_cache_rope=self.reuse_cache_rope,
             compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,
@@ -387,6 +399,8 @@ class HandKVSession:
             else None
         )
         self._pending_cache: list[tuple[torch.cuda.Event, tuple[Tensor, Tensor]]] = []
+        self._deferred_cache: tuple[int, Tensor, Tensor, int] | None = None
+        self._deferred_cache_owner: int | None = None
 
         self._compiled_refresh_layer = None
         if self.compile_cache_refresh:
@@ -839,6 +853,36 @@ class HandKVSession:
     def _submit_refresh(
         self, start: int, clean_vision: Tensor, action: Tensor, n_frames: int
     ) -> float:
+        """Retain one clean chunk, or submit it immediately when deferral is off."""
+        if self.defer_cache_refresh:
+            if self._deferred_cache is not None:
+                raise RuntimeError("Previous deferred cache refresh has not been submitted")
+            self._deferred_cache = (start, clean_vision.detach(), action.detach(), n_frames)
+            self._deferred_cache_owner = threading.get_ident()
+            return 0.0
+        return self._submit_refresh_now(start, clean_vision, action, n_frames)
+
+    @torch.no_grad()
+    def submit_pending_cache_update(self) -> float:
+        """Submit retained work on its inference owner; propagate cache errors."""
+        request = self._deferred_cache
+        if request is None:
+            return 0.0
+        if self._deferred_cache_owner != threading.get_ident():
+            raise RuntimeError("Deferred cache refresh must run on the inference owner")
+        self._deferred_cache = None
+        self._deferred_cache_owner = None
+        try:
+            return self._submit_refresh_now(*request)
+        except BaseException:
+            # Keep request tensors alive until any partially submitted work ends.
+            if self._cache_stream is not None:
+                self._cache_stream.synchronize()
+            raise
+
+    def _submit_refresh_now(
+        self, start: int, clean_vision: Tensor, action: Tensor, n_frames: int
+    ) -> float:
         """Run the clean K/V write-back, on a side stream when one is configured.
 
         The rewrite only has to finish before the *next* step reads the cache, so
@@ -879,9 +923,10 @@ class HandKVSession:
         Returns:
             Seconds spent waiting.
         """
-        if self._cache_stream is None or not self._pending_cache:
-            return 0.0
         waited = time.perf_counter()
+        self.submit_pending_cache_update()
+        if self._cache_stream is None or not self._pending_cache:
+            return time.perf_counter() - waited
         current = torch.cuda.current_stream(self.device)
         current.wait_event(self._pending_cache[-1][0])
         if block:
@@ -1337,6 +1382,10 @@ class HandKVSession:
         cache_submit_s = 0.0
         if self.cache_mode in {"block", "fademem"}:
             cache_submit_s = self._submit_refresh(start, clean_tokens, actions, frames)
+            if profile:
+                # Synchronized attribution includes all refresh work. Interactive
+                # readiness/throughput must be measured with profiling disabled.
+                cache_submit_s += self.submit_pending_cache_update()
         else:
             self._seed_chunk_cat(start, clean_tokens, actions, frames)
         self._abs_frame += frames

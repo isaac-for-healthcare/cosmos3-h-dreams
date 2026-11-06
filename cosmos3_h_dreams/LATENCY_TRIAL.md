@@ -280,6 +280,65 @@ speed gate of 5 ms and 4%, so whole-pass compilation is **Rejected** and is not
 part of the product. Finite, reset and scene-return checks passed; numerical
 drift by itself is not a semantic quality failure.
 
+### Experimental deferred cache refresh (default off)
+
+Add `--defer-cache-refresh` to prepare pixels before submitting the next history
+cache refresh. The MJPEG server queues that refresh on the **existing dedicated
+inference worker** while playback continues. It joins the work before subsequent
+inference, reset, scene switching or cleanup. There is no additional model thread.
+Cache arithmetic, validation, merge policy and eight-frame generation are retained.
+
+Use `--no-defer-cache-refresh` to disable it. Session YAML accepts
+`runtime.defer_cache_refresh: true`; every preset leaves it off. It requires
+CUDA, FadeMem and `--overlap-cache-update`. Browser use additionally requires
+`--dedicated-inference-thread`. The documented compiled FadeMem preset already
+enables cache-update overlap. The option is independent of compilation, but the
+measured combination also enables compiled cache refresh and positional reuse.
+
+For the measured H100 combination, add these options to the optimized keyboard
+command near the top of this document:
+
+```bash
+--compile-cache-refresh --reuse-cache-rope \
+--defer-cache-refresh --generation-lead-ms 120
+```
+
+**Recalibrate after disabling deferral.** Keeping a shorter lead while restoring
+synchronous refresh can starve playback. Use `--generation-lead-ms 0` while
+calibrating; 160 ms was the earlier H100 setting with compiled refresh. Neither
+120 nor 160 ms is a measured RTX PRO 6000 recommendation.
+
+The H100 prototype passed four fresh-process 35-second browser trials in
+baseline/candidate/candidate/baseline order, seconds 10–32 measured and 44 control
+transitions per setting. Baseline used a 160 ms lead; deferral used 120 ms:
+
+| Software control-to-browser | Baseline | Deferred refresh |
+| --- | ---: | ---: |
+| Median | 317.70 ms | 281.50 ms |
+| P95 | 436.00 ms | 398.00 ms |
+
+The median saving was **36.20 ms / 11.39%**. All controls were consumed and
+observed, no intermediate frame IDs were missing, and there were no gaps over
+100 ms in the measured windows. Observed playback was about 29.5 fps. This is a
+combined delivery/scheduling gain; a fixed-lead comparison was not run.
+
+A separate matched pilot made prepared RGB available in **118.49 → 69.36 ms**,
+while complete throughput, including all cache work, stayed essentially unchanged
+at **67.50 → 68.16 fps**. The earlier readiness is not 49 ms less GPU computation.
+All 512 moving plus 128 static frames and cache-entry schedules matched exactly,
+including reset, scene return, and pending-work lifecycle checks. A further
+512-frame replay through actual paced presentation matched the compiled reference
+exactly, including reset. Additional-CPU-thread variants lost 8.67–14.97% throughput
+and were rejected; they are not included in this implementation.
+
+Raw Tokens submits refresh synchronously before returning its latent output;
+the deferred delivery benefit is validated for MJPEG pixels only. Standalone
+session consumers may call `submit_pending_cache_update()` on the inference owner
+after pixel preparation. The next step, reset and close also drain retained work.
+The manual CUDA probe accepts `--defer-cache-refresh` and reports frame-readiness
+timings separately from complete cache-drained throughput. Synchronized stage
+profiling drains refresh inside the step and does not measure this delivery gain.
+
 ## Evidence and limits
 
 These are short software-timing experiments, not optical display/physical

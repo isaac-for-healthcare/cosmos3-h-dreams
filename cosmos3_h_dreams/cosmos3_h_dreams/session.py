@@ -90,6 +90,8 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         if self._model is not None:
             return
         print(f"[cosmos3-h-dreams] {self.model_status}", flush=True)
+        if self.config.defer_cache_refresh:
+            print("[cosmos3-h-dreams] Experimental deferred cache refresh enabled.", flush=True)
         if self.config.reuse_cache_rope:
             print("[cosmos3-h-dreams] Experimental cache positional-factor reuse enabled.", flush=True)
         if self.config.compile_cache_refresh:
@@ -121,6 +123,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
             fademem_beta=self.config.fademem_beta,
             fademem_merge_selection=self.config.fademem_merge_selection,
             overlap_cache_update=self.config.overlap_cache_update,
+            defer_cache_refresh=self.config.defer_cache_refresh,
             reuse_cache_rope=self.config.reuse_cache_rope,
             compile_cache_refresh=self.config.compile_cache_refresh,
             compile_denoise=self.config.compile_denoise,
@@ -288,6 +291,10 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         latents = rollout.step(actions, profile=self.config.profile)
         model_finished = time.perf_counter()
         latent = torch.cat(latents, dim=1)
+        if self.config.defer_cache_refresh and not decode:
+            # Raw Tokens retains synchronous submission; the deferred delivery
+            # optimization is validated for prepared pixels only.
+            rollout.submit_pending_cache_update()
         video = model.decode_tensor(latent) if decode else None
         if self.config.profile and latent.is_cuda:
             torch.cuda.current_stream(latent.device).synchronize()
@@ -324,6 +331,10 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         self._rows_consumed += rows
         self._step_index += 1
         return result
+
+    def submit_pending_cache_update(self) -> float:
+        """Submit retained refresh after pixel preparation, on the inference owner."""
+        return self._require_runtime()[1].submit_pending_cache_update()
 
     def _calibration_state(self) -> tuple[bool, str, float]:
         source = self._headset_source
@@ -511,6 +522,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         print(
             f"cache: {self.config.cache_mode} | "
             f"overlap: {self.config.overlap_cache_update} | "
+            f"deferred cache refresh: {self.config.defer_cache_refresh} | "
             f"cache positional reuse: {self.config.reuse_cache_rope} | "
             f"experimental cache compile: {self.config.compile_cache_refresh} | "
             f"compile: {self.config.compile_denoise} "

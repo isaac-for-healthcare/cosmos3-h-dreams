@@ -168,6 +168,11 @@ class HeadsetServer:
             raise ValueError("generation_lead_ms must be finite and nonnegative")
         if generation_lead_ms and not (overlap_playback and deadline_pacing):
             raise ValueError("generation_lead_ms requires overlapping deadline pacing")
+        self.defer_cache_refresh = bool(
+            getattr(getattr(session, "config", None), "defer_cache_refresh", False)
+        )
+        if self.defer_cache_refresh and not dedicated_inference_thread:
+            raise ValueError("defer_cache_refresh requires dedicated_inference_thread=True")
         self.generation_lead_ms = generation_lead_ms
         self._next_block_due_s: float | None = None
         self._generation_wakeup = asyncio.Event()
@@ -187,6 +192,7 @@ class HeadsetServer:
             ThreadPoolExecutor(max_workers=1, thread_name_prefix="dreams-inference")
             if dedicated_inference_thread else None
         )
+        self._cache_refresh_future: asyncio.Future | None = None
         self._last_publish_s: float | None = None
         self._jpeg: bytes | None = None
         self._jpeg_version = 0
@@ -220,12 +226,45 @@ class HeadsetServer:
 
     async def _run_inference(self, function, *args, **kwargs):
         """Keep GPU initialization and execution on the same optional worker."""
+        await self._wait_for_cache_refresh()
+        return await self._run_on_inference_thread(function, *args, **kwargs)
+
+    async def _run_on_inference_thread(self, function, *args, **kwargs):
+        """Execute on the owner, including cleanup after a failed refresh."""
         if self._inference_executor is None:
             return await asyncio.to_thread(function, *args, **kwargs)
         context = contextvars.copy_context()
         return await asyncio.get_running_loop().run_in_executor(
             self._inference_executor, functools.partial(context.run, function, *args, **kwargs)
         )
+
+    def _queue_cache_refresh(self) -> None:
+        """Queue maintenance after RGB preparation without blocking playback."""
+        if self._cache_refresh_future is not None or self._inference_executor is None:
+            raise RuntimeError("Deferred refresh requires an idle dedicated inference queue")
+        context = contextvars.copy_context()
+        self._cache_refresh_future = asyncio.get_running_loop().run_in_executor(
+            self._inference_executor,
+            functools.partial(context.run, self.session.submit_pending_cache_update),
+        )
+
+    async def _wait_for_cache_refresh(self) -> None:
+        """Join maintenance and preserve it when an asyncio waiter is cancelled."""
+        pending = self._cache_refresh_future
+        if pending is not None:
+            try:
+                await asyncio.shield(pending)
+            except asyncio.CancelledError:
+                # Even a completed future may carry an error this cancelled
+                # waiter did not observe. Leave it for the next call/cleanup.
+                raise
+            except BaseException:
+                if self._cache_refresh_future is pending:
+                    self._cache_refresh_future = None
+                raise
+            else:
+                if self._cache_refresh_future is pending:
+                    self._cache_refresh_future = None
 
     async def close(self) -> None:
         """Stop controller sampling, video delivery, and the model session."""
@@ -248,7 +287,11 @@ class HeadsetServer:
         try:
             # Queue cleanup behind an in-flight step even if its asyncio waiter
             # was cancelled; cancelling that waiter cannot stop its GPU thread.
-            await self._run_inference(self.session.close)
+            try:
+                await self._wait_for_cache_refresh()
+            finally:
+                # A refresh exception must not skip model/decoder cleanup.
+                await self._run_on_inference_thread(self.session.close)
         finally:
             if self._inference_executor is not None:
                 self._inference_executor.shutdown(wait=True)
@@ -370,6 +413,7 @@ class HeadsetServer:
                     if playback is not None:
                         await playback
                         playback = None
+                    await self._wait_for_cache_refresh()
                     if self.token_descriptor is None:
                         return
                     await self._run_inference(self.session.reset)
@@ -430,6 +474,8 @@ class HeadsetServer:
                     frames = await self._run_inference(
                         track.prepare_result_frames, result
                     )
+                    if self.defer_cache_refresh:
+                        self._queue_cache_refresh()
                     if self._scene_request is not None:
                         continue
                     prepared = time.perf_counter()

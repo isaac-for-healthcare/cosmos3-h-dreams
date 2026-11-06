@@ -67,14 +67,15 @@ def test_experimental_cache_compile_yaml_and_cli_override(tmp_path, monkeypatch)
     monkeypatch.setattr(session_config_module, "REPO_ROOT", tmp_path)
     data["runtime"].update(
         preset="wan-taehv-chunk2-2steps-fademem-compile",
-        device="cuda:0", compile_cache_refresh=True, reuse_cache_rope=True,
+        device="cuda:0", compile_cache_refresh=True, reuse_cache_rope=True, defer_cache_refresh=True,
     )
     path.write_text(yaml.safe_dump(data))
-    for flags, enabled in [([], True), (["--no-compile-cache-refresh", "--no-reuse-cache-rope"], False)]:
+    for flags, enabled in [([], True), (["--no-compile-cache-refresh", "--no-reuse-cache-rope", "--no-defer-cache-refresh"], False)]:
         application = Cosmos3HDreamsApplication()
         application.init(["--session-config", str(path), "--headset", *flags])
         assert all(c.compile_cache_refresh is enabled for c in application.scenes.values())
         assert all(c.reuse_cache_rope is enabled for c in application.scenes.values())
+        assert all(c.defer_cache_refresh is enabled for c in application.scenes.values())
 
 
 @pytest.mark.parametrize(

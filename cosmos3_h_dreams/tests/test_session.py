@@ -267,6 +267,7 @@ def test_session_forwards_optimization_flags(
             overlap_cache_update=True,
             compile_cache_refresh=cache_mode == "fademem",
             reuse_cache_rope=cache_mode == "fademem",
+            defer_cache_refresh=cache_mode == "fademem",
             compile_denoise=True,
             compile_denoise_mode="default",
             cuda_graph_denoise=True,
@@ -296,6 +297,7 @@ def test_session_forwards_optimization_flags(
         "overlap_cache_update",
         "compile_cache_refresh",
         "reuse_cache_rope",
+        "defer_cache_refresh",
         "compile_denoise",
         "compile_denoise_mode",
         "cuda_graph_denoise",
@@ -379,6 +381,7 @@ def test_cosmos_model_forwards_fademem_selection_to_rollout(monkeypatch):
     model.fademem_merge_selection = "cosine"
     model.compile_cache_refresh = True
     model.reuse_cache_rope = True
+    model.defer_cache_refresh = True
     scene = SimpleNamespace(text_ids=None, init_latent=object(), fps=10.0)
     monkeypatch.setattr(
         model_module, "HandKVSession", lambda _net, **kwargs: SimpleNamespace(**kwargs)
@@ -387,6 +390,7 @@ def test_cosmos_model_forwards_fademem_selection_to_rollout(monkeypatch):
     assert rollout.fademem_merge_selection == "cosine"
     assert rollout.compile_cache_refresh
     assert rollout.reuse_cache_rope
+    assert rollout.defer_cache_refresh
     assert "fademem_consolidation" not in vars(rollout)
     assert "fademem_position_mode" not in vars(rollout)
 

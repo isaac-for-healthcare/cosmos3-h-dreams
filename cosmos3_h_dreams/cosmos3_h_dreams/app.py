@@ -141,6 +141,12 @@ class Cosmos3HDreamsApplication(IFlashDreamsApplication):
             default=False,
         )
         parser.add_argument(
+            "--defer-cache-refresh",
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help="Experimental: defer FadeMem refresh until pixels are prepared. Default off.",
+        )
+        parser.add_argument(
             "--reuse-cache-rope",
             action=argparse.BooleanOptionalAction,
             default=False,

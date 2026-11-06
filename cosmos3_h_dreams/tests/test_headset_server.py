@@ -899,7 +899,8 @@ def test_gpu_frame_conversion_keeps_cpu_fallback():
     np.testing.assert_array_equal(candidate, baseline)
 
 
-def test_dedicated_worker_preserves_context_and_serializes_shutdown():
+@pytest.mark.parametrize("deferred", [False, True])
+def test_dedicated_worker_preserves_context_and_serializes_shutdown(deferred):
     """Exercise actual init, scene switch, generation, conversion and cancellation."""
     context = contextvars.ContextVar("inference_test_context", default=None)
     calls = []
@@ -925,12 +926,13 @@ def test_dedicated_worker_preserves_context_and_serializes_shutdown():
         context.set("request-context")
         manager = HeadsetServer(
             session=SimpleNamespace(
-                config=SimpleNamespace(fps=10, profile=False),
+                config=SimpleNamespace(fps=10, profile=False, defer_cache_refresh=deferred),
                 init=lambda: record("init"),
                 switch_scene=lambda _: record("switch"),
                 next_step_requirements=lambda: SimpleNamespace(input_frame_count=1),
                 step=step,
                 close=lambda: record("close"),
+                submit_pending_cache_update=lambda: record("refresh"),
             ),
             frames=LatestHeadsetFrames(fps=30),
             dedicated_inference_thread=True,
@@ -958,7 +960,8 @@ def test_dedicated_worker_preserves_context_and_serializes_shutdown():
             await asyncio.wait_for(closing, timeout=2)
             await manager.close()
             names = [name for name, _, _ in calls]
-            assert names == ["init", "switch", "step", "prepare", "step", "step_finished", "close"]
+            assert names == ["init", "switch", "step", "prepare",
+                             *(["refresh"] if deferred else []), "step", "step_finished", "close"]
             workers = {worker for _, worker, _ in calls}
             assert len(workers) == 1 and threading.get_ident() not in workers
             assert all(value == "request-context" for _, _, value in calls)

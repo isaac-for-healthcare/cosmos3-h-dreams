@@ -36,6 +36,7 @@ def main() -> None:
     parser.add_argument("--mode", choices=("eager", "compiled"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--reuse-cache-rope", action="store_true")
+    parser.add_argument("--defer-cache-refresh", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--frames", type=int, default=512)
     parser.add_argument("--reference-quality", type=Path,
@@ -59,7 +60,8 @@ def main() -> None:
         "initial_frame": Path("assets/example_data/scenes/example_frame.png"),
         "actions": args.output / "actions.npy",
         "compile_cache_refresh": args.mode == "compiled",
-        "reuse_cache_rope": args.reuse_cache_rope, "profile": False,
+        "reuse_cache_rope": args.reuse_cache_rope,
+        "defer_cache_refresh": args.defer_cache_refresh, "profile": False,
     })
     session = Cosmos3HDreamsSession(config=config)
     converter = MjpegFrames(gpu_frame_conversion=True)
@@ -76,12 +78,13 @@ def main() -> None:
                         ("TORCHINDUCTOR_CACHE_DIR", "TRITON_CACHE_DIR")},
         trajectory_sha256=hashlib.sha256(trajectory_path.read_bytes()).hexdigest(),
         warmup_chunks=8, timed_chunks=32, metric="generation_to_prepared_host_uint8_rgb",
-        note="Record cache state and competing workloads separately; not control-to-screen latency.",
+        note="Readiness excludes deferred refresh. Complete throughput includes it and the final GPU drain. Neither is screen latency.",
     )
 
     def step():
         result = session.step(CanonicalInputWindow(window=TimeWindow(start_s=0, end_s=.8)))
-        return result, converter.prepare_result_frames(result)
+        frames = converter.prepare_result_frames(result)
+        return result, frames
 
     def hashes(frames):
         return [hashlib.sha256(frame.tobytes()).hexdigest() for frame in frames]
@@ -93,6 +96,8 @@ def main() -> None:
         _, rollout = session._require_runtime()
         assert rollout.fademem.reuse_cache_rope == config.reuse_cache_rope
         report["reuse_cache_rope_active"] = rollout.fademem.reuse_cache_rope
+        assert rollout.defer_cache_refresh == config.defer_cache_refresh
+        report["defer_cache_refresh_active"] = rollout.defer_cache_refresh
         compiled_calls = 0
         compiled_layer = rollout._compiled_refresh_layer
         assert (compiled_layer is not None) == config.compile_cache_refresh
@@ -108,11 +113,17 @@ def main() -> None:
                           "startup_s": report["startup_s_including_hidden_compile"]}), flush=True)
         for _ in range(8):
             step()
+            session.submit_pending_cache_update()
+        rollout.wait_for_pending_cache_update(block=True)
         wall_ms = []
+        complete_started = time.perf_counter()
         for _ in range(32):
             started = time.perf_counter()
             step()
             wall_ms.append((time.perf_counter() - started) * 1000)
+            session.submit_pending_cache_update()
+        rollout.wait_for_pending_cache_update(block=True)
+        report["complete_ms_per_chunk"] = (time.perf_counter() - complete_started) * 1000 / 32
         report["step_wall_ms"] = wall_ms
         report["generation_ms"] = {f"p{p}": float(np.percentile(wall_ms, p))
                                    for p in (50, 90, 95)}
@@ -121,6 +132,7 @@ def main() -> None:
         frame_hashes = []
         for _ in range(args.frames // 8):
             result, frames = step()
+            session.submit_pending_cache_update()
             assert len(frames) == 8 and torch.isfinite(result.video_chunk).all().item()
             frame_hashes.extend(hashes(frames))
         report.update(frame_sha256=frame_hashes, frames=len(frame_hashes), all_finite=True,
@@ -140,6 +152,22 @@ def main() -> None:
         _, frames = step()
         report["scene_return_exact"] = hashes(frames) == frame_hashes[:8]
         assert report["scene_return_exact"]
+        # Exercise a retained chunk without the pixel-preparation consumer.
+        session.reset()
+        session.step(CanonicalInputWindow(window=TimeWindow(start_s=0, end_s=.8)))
+        session.reset()
+        _, frames = step()
+        report["pending_reset_exact"] = hashes(frames) == frame_hashes[:8]
+        assert report["pending_reset_exact"]
+        session.reset()
+        raw = session.step(CanonicalInputWindow(window=TimeWindow(start_s=0, end_s=.8)), decode=False)
+        report["raw_refresh_submitted"] = session._require_runtime()[1]._deferred_cache is None
+        assert report["raw_refresh_submitted"]
+        report["raw_latent_sha256"] = hashlib.sha256(
+            raw.output.detach().contiguous().view(torch.uint8).cpu().numpy().tobytes()
+        ).hexdigest()
+        # Leave a pixel step pending to verify close drains it below.
+        session.step(CanonicalInputWindow(window=TimeWindow(start_s=0, end_s=.8)))
         if args.reference_quality:
             reference = json.loads(args.reference_quality.read_text())["frame_sha256"]
             report["reference_quality"] = str(args.reference_quality)

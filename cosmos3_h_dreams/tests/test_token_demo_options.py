@@ -34,7 +34,7 @@ def test_keyboard_presentation_flags_preserve_model_settings(monkeypatch, enable
         argv += ["--display-fps", "30", "--deadline-pacing",
                  "--gpu-frame-conversion", "--dedicated-inference-thread",
                  "--generation-lead-ms", "180"]
-        argv += ["--compile-cache-refresh", "--reuse-cache-rope"]
+        argv += ["--compile-cache-refresh", "--reuse-cache-rope", "--defer-cache-refresh"]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(token_demo, "HeadsetServer", manager)
     monkeypatch.setattr(token_demo, "prepare_decoder", lambda *a, **kw: {"version": "test"})
@@ -46,6 +46,7 @@ def test_keyboard_presentation_flags_preserve_model_settings(monkeypatch, enable
     assert config.compile_denoise and config.cuda_graph_denoise
     assert config.compile_cache_refresh is enabled
     assert config.reuse_cache_rope is enabled
+    assert config.defer_cache_refresh is enabled
     assert captured["display_fps"] == (30 if enabled else 10)
     for name in ["deadline_pacing", "gpu_frame_conversion", "dedicated_inference_thread"]:
         assert captured[name] is enabled
