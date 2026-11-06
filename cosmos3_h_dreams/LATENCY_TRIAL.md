@@ -172,8 +172,8 @@ An isolated H100 trial measured **137.70 → 122.09 ms per eight frames**, a
 **15.61 ms / 11.34%** median reduction, over 32 timed chunks after eight warmup
 chunks. Timing ended at prepared host uint8 RGB, not screen presentation. The
 tested stack was H100 80 GB, Python 3.12.3, PyTorch 2.11.0+cu130, CUDA 13.0 and
-cuDNN 91900, with the preset in the keyboard command above and a warm persistent
-compiler cache. These numbers came from the pre-integration experiment, not RTX
+cuDNN 91900, with the preset in the keyboard command above and persistent
+compiler caching enabled. These numbers came from the pre-integration experiment, not RTX
 PRO 6000. The eager per-layer CUDA-graph alternative was slower and is not shipped.
 
 **Numerical differences are expected.** In six matched one-minute pairs (seeds
@@ -185,6 +185,15 @@ late-quarter sharpness ratios 0.973–1.010. Sampled images were broadly similar
 with later tool-position and edge differences; some later cache merges differed.
 This does not establish full-video perceptual equivalence, hallucination rate,
 or semantic control accuracy. Compare longer rollouts on the target GPU.
+
+The integrated option passed **151 product CPU tests**, two dependency-policy
+checks and the browser JavaScript checks. On Eos H100, all 512 frames with the
+option disabled matched the eager experimental reference, and all 512 enabled
+frames matched the compiled experimental reference. Both modes passed finite,
+reset and scene-return checks. The enabled replay made 2,088 compiled layer
+calls after saturation; the disabled replay made zero. Validation used separate
+concurrent GPUs, so its timings are diagnostic rather than a new isolated speed
+comparison. Source tested: `c49da803b5371849ed9940e824e4b8c71c5b7ec9`.
 
 The product includes a bounded manual CUDA probe. From the repository root,
 run these sequentially on an otherwise idle GPU, in fresh processes:
