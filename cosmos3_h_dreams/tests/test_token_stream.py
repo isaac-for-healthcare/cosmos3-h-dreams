@@ -86,6 +86,7 @@ def test_raw_output_skips_decode_and_preserves_cropped_tchw():
     latent = torch.arange(48 * 2 * 4 * 6).reshape(48, 2, 4, 6).to(torch.bfloat16)
     session = Cosmos3HDreamsSession(config=SimpleNamespace(
         actions=Path("replay.npy"), chunk_size=2, profile=False, device="cpu",
+        defer_cache_refresh=False,
     ))
     session._scene = SimpleNamespace(replay_actions=torch.zeros(8, 64))
     session._model = SimpleNamespace(_crop_decode_latent=lambda z: z[..., :3, :5])
