@@ -61,3 +61,20 @@ checkFrame(4);
 now += 10000;
 checkFrame(4);
 console.log("VR success messages hide after two seconds; loading and errors stay visible.");
+
+vm.runInContext(`
+  WebSocket.OPEN = 1;
+  globalThis.sent = [];
+  socket = { readyState: 1, bufferedAmount: 128,
+    send: text => sent.push(JSON.parse(text)) };
+  for (let i = 0; i < 1000; i++) send({ type: "xr_frame", t_client: i });
+  send({ type: "reset" });
+  socket.bufferedAmount = 0;
+  send({ type: "xr_frame", t_client: 1000 });
+  socket.readyState = 3;
+  send({ type: "xr_frame", t_client: 1001 });
+`, context);
+assert.deepEqual(JSON.parse(vm.runInContext("JSON.stringify(sent)", context)), [
+  { type: "reset" }, { type: "xr_frame", t_client: 1000 },
+]);
+console.log("Congested controller links skip stale poses, preserve reset, and send the latest pose on recovery.");

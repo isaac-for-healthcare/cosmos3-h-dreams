@@ -18,6 +18,10 @@ not physical robot control or a clinically validated controller.
   produced flat output; 1.30.0 produced changing surgical frames with the
   same model. This is a compatibility observation, not a kernel root cause.
 
+For this fork’s optimized eight-frame, compiled 30 fps evaluation, use the
+[latency trial guide](cosmos3_h_dreams/LATENCY_TRIAL.md). The original eager
+demo command below remains available as a separate configuration.
+
 ## Setup and launch
 
 Run from the repository root on a supported Linux NVIDIA GPU machine. Follow
@@ -38,7 +42,9 @@ uv sync --package flashdreams-cosmos3-h-dreams --extra token-stream --locked
 
 The optional eager warmup moves first-use kernel initialization before readiness
 and resets the rollout afterwards. Omit that flag to retain the zero-warmup
-default. Keep compilation/CUDA graphs disabled for this demo configuration.
+default. The eager command above disables compilation/CUDA graphs; the
+latency trial guide instead uses the compiled preset with one dedicated
+inference worker, matching the configuration exercised on H100.
 Weights are supplied separately; first launch may download the TAEHV weights
 and export the FP32 ONNX decoder under `data_local/decoder/`. Do not share model
 weights, generated decoder files, or local caches as part of the source patch.

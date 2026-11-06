@@ -32,15 +32,33 @@ from .session import Cosmos3HDreamsSession
 
 def main() -> None:
     """Serve keyboard or recorded actions on a dedicated loopback port."""
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8081)
     parser.add_argument("--decoder-dir", type=Path, default=Path("data_local/decoder"))
     parser.add_argument("--controls", choices=("keyboard", "replay"), default="keyboard")
     parser.add_argument("--eager-warmup-steps", type=int, default=0)
+    parser.add_argument(
+        "--display-fps", type=int,
+        help="Presentation cadence; defaults to the model conditioning FPS.",
+    )
+    parser.add_argument(
+        "--deadline-pacing", action=argparse.BooleanOptionalAction, default=False,
+        help="Include JPEG encoding time in the MJPEG frame deadline.",
+    )
+    parser.add_argument(
+        "--gpu-frame-conversion", action=argparse.BooleanOptionalAction, default=False,
+        help="Convert generated frames to uint8 on the GPU before host transfer.",
+    )
+    parser.add_argument(
+        "--dedicated-inference-thread", action=argparse.BooleanOptionalAction,
+        default=False, help="Initialize and run inference on the same worker.",
+    )
     args, model_args = parser.parse_known_args()
     if args.eager_warmup_steps < 0:
         parser.error("--eager-warmup-steps must be non-negative")
+    if args.display_fps is not None and args.display_fps <= 0:
+        parser.error("--display-fps must be positive")
     application = Cosmos3HDreamsApplication()
     application.init((["--headset"] if args.controls == "keyboard" else []) + model_args)
     session = application.create_session()
@@ -61,7 +79,13 @@ def main() -> None:
         )
     manager = HeadsetServer(
         session=session, frames=LatestHeadsetFrames(fps=session.config.fps),
-        display_fps=round(session.config.fps), scenes=application.scenes,
+        display_fps=(
+            args.display_fps if args.display_fps is not None else round(session.config.fps)
+        ),
+        deadline_pacing=args.deadline_pacing,
+        gpu_frame_conversion=args.gpu_frame_conversion,
+        dedicated_inference_thread=args.dedicated_inference_thread,
+        scenes=application.scenes,
         scene_labels=application.scene_labels,
     )
     manager.token_descriptor = prepare_decoder(
@@ -85,6 +109,13 @@ def main() -> None:
     app.router.add_get("/decoder/{version}/fp32.onnx", decoder)
     app.router.add_static("/static/", web_dir)
     logging.basicConfig(level=logging.INFO)
+    logging.getLogger(__name__).info(
+        "Keyboard demo: model_fps=%s display_fps=%s chunk_size=%s "
+        "compile=%s cuda_graph=%s deadline_pacing=%s gpu_conversion=%s dedicated_worker=%s",
+        session.config.fps, manager.display_fps, session.config.chunk_size,
+        session.config.compile_denoise, session.config.cuda_graph_denoise,
+        args.deadline_pacing, args.gpu_frame_conversion, args.dedicated_inference_thread,
+    )
     web.run_app(app, host=args.host, port=args.port)
 
 

@@ -12,6 +12,15 @@ Starting from a surgical scene image, Cosmos3-H-Dreams generates video in chunks
 conditioned on instrument actions. Replay recorded actions to an MP4, or control
 the simulation from a headset browser and watch the output on the headset or a PC.
 
+## Eight-frame latency evaluation fork
+
+For the optimized keyboard demo and RTX PRO 6000 evaluation, start with
+[the latency trial guide](cosmos3_h_dreams/LATENCY_TRIAL.md). This branch adds
+opt-in GPU frame conversion, deadline pacing, a dedicated inference worker, and
+a corrected MJPEG delivery boundary to the keyboard/token-streaming fork.
+It preserves eight-frame model generation. H100 measurements are available;
+RTX PRO 6000 performance remains to be measured.
+
 ## Quick Start
 
 Run these commands from the repository root. You need a compatible

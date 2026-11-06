@@ -233,6 +233,48 @@ generation and playback. For MJPEG diagnostics, compare `input`, `generation`,
 from server receipt of the newest pose in a block to its first JPEG publication;
 it excludes network delivery and headset rendering.
 
+For steadier MJPEG publication, try `--deadline-pacing` (or
+`headset.deadline_pacing: true` in the session YAML). This opt-in encodes the next
+JPEG before its publication deadline, including at chunk boundaries. It preserves
+frame order and reanchors after a late frame instead of sending a catch-up burst.
+`--no-deadline-pacing` restores the original timing. Status: **Useful opt-in** for
+server pacing; GPU throughput and live headset motion-to-screen latency still
+require measurement on the deployment. A deterministic 20 fps test with JPEG
+encode times of 5–35 ms changes publication intervals from 20–80 ms to 50 ms;
+these are synthetic scheduler measurements, not headset performance results.
+
+The browser skips sending replaceable pose samples while its controller WebSocket
+has unsent bytes; it sends a fresh pose on the next XR frame after the backlog
+clears. Explicit reset commands are still sent. Already-transmitted network data
+cannot be recalled. This bounds application-side pose backlog without changing
+the model's action rate.
+
+`--gpu-frame-conversion` (or `headset.gpu_frame_conversion: true`) moves the
+existing float32 pixel scaling and uint8 conversion onto CUDA before the host
+copy. It sends one byte per channel and keeps CPU inputs on the original path.
+It is opt-in; `--no-gpu-frame-conversion` restores host conversion. Validate
+same-frame pixel equality and end-to-end chunk timing on the target GPU before
+promoting it. It does not quantize the model weights or change the decoder.
+
+`--dedicated-inference-thread` (or `headset.dedicated_inference_thread: true`)
+keeps model initialization, generation, scene changes, GPU frame preparation and
+cleanup on one worker. JPEG encoding uses the general worker pool. This opt-in
+avoids moving GPU execution to a different CPU worker during playback; shutdown
+waits for any in-flight inference before releasing the session. Use
+`--no-dedicated-inference-thread` for the original worker selection. Validate
+frame continuity and replay/reset equality on the deployment before enabling it.
+
+MJPEG replies complete the next part's headers immediately after each JPEG, so
+Chromium can display it even when generation pauses before the next frame. The
+multipart boundary delimits the JPEG; per-part Content-Length is omitted.
+
+At the default chunk size, eight action samples at 30 Hz span about 233 ms from
+first to last sample (about 267 ms to acquire eight new samples). Eight output
+frames at 20 fps occupy a 400 ms playback budget. Higher display FPS only shortens
+that budget; if generation cannot supply frames at that rate, it creates gaps.
+Measure warmed generation, input acquisition, queueing, frame intervals, and
+browser presentation separately before changing rates or chunk size.
+
 ### Cache options
 
 - `cat`: eager rolling cache; accepts partial final chunks.

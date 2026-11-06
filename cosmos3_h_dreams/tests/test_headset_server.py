@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import io
 import subprocess
 import sys
@@ -104,7 +105,11 @@ def test_mjpeg_stream_does_not_load_webrtc_or_gpl_codecs() -> None:
                     async with client.ws_connect('/ws'):
                         reader = MultipartReader.from_response(stream)
                         part = await asyncio.wait_for(reader.next(), timeout=5)
-                        image = Image.open(io.BytesIO(await part.read()))
+                        # aiohttp reads two chunks before looking for a boundary.
+                        # Keep read-ahead below this tiny synthetic JPEG's size.
+                        part.chunk_size = 64
+                        jpeg = await asyncio.wait_for(part.read(), timeout=3)
+                        image = Image.open(io.BytesIO(jpeg))
                         assert image.size == (6, 4)
                         assert abs(image.getpixel((0, 0))[0] - 220) <= 3
                     stream.close()
@@ -311,8 +316,9 @@ def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
                 for reader in readers:
                     part = await asyncio.wait_for(reader.next(), timeout=3)
                     assert part.headers["Content-Type"] == "image/jpeg"
-                    jpeg = bytes(await part.read())
-                    assert int(part.headers["Content-Length"]) == len(jpeg)
+                    part.chunk_size = 64  # Avoid read-ahead beyond a tiny test JPEG.
+                    jpeg = bytes(await asyncio.wait_for(part.read(), timeout=3))
+                    assert "Content-Length" not in part.headers
                     image = Image.open(io.BytesIO(jpeg))
                     assert image.size == (6, 4)
                     assert image.getpixel((0, 0)) == pytest.approx((220, 30, 50), abs=3)
@@ -327,7 +333,34 @@ def test_mjpeg_streams_generated_frames_to_multiple_viewers_and_closes(
             assert not manager._ready.is_set()
             await manager.close()
             for stream in streams:
-                assert await asyncio.wait_for(stream.content.read(), timeout=3) == b""
+                remaining = await asyncio.wait_for(stream.content.read(), timeout=3)
+                assert remaining.lstrip(b"\r\n") == b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+
+    asyncio.run(check())
+
+
+def test_mjpeg_finishes_each_part_before_another_frame_is_available() -> None:
+    """A paused generator must not leave its last JPEG waiting for MIME headers."""
+    session = SimpleNamespace(
+        init=lambda: None, close=lambda: None,
+        config=SimpleNamespace(fps=10, profile=False),
+    )
+
+    async def check() -> None:
+        manager = HeadsetServer(session=session, frames=LatestHeadsetFrames(fps=10))
+        async with TestClient(TestServer(create_app(manager))) as client:
+            stream = await client.get("/video")
+            for index, jpeg in enumerate((b"first-jpeg", b"second-jpeg")):
+                async with manager._jpeg_changed:
+                    manager._jpeg = jpeg
+                    manager._jpeg_version += 1
+                    manager._jpeg_changed.notify_all()
+                header = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                expected = (header if index == 0 else b"") + jpeg + b"\r\n" + header
+                assert await asyncio.wait_for(
+                    stream.content.readexactly(len(expected)), timeout=1
+                ) == expected
+            stream.close()
 
     asyncio.run(check())
 
@@ -409,7 +442,8 @@ def test_mjpeg_profile_measures_cycle_and_block_boundary(monkeypatch, capsys) ->
 
 
 @pytest.mark.parametrize("overlap", [False, True])
-def test_mjpeg_overlap_is_bounded_and_preserves_frame_order(monkeypatch, overlap):
+@pytest.mark.parametrize("deadline_pacing", [False, True])
+def test_mjpeg_overlap_is_bounded_and_preserves_frame_order(monkeypatch, overlap, deadline_pacing):
     async def check():
         encoding = asyncio.Event()
         release = asyncio.Event()
@@ -446,6 +480,7 @@ def test_mjpeg_overlap_is_bounded_and_preserves_frame_order(monkeypatch, overlap
             frames=LatestHeadsetFrames(fps=10),
             display_fps=1000,
             overlap_playback=overlap,
+            deadline_pacing=deadline_pacing,
         )
         manager.socket = object()
         manager.track = server_module.MjpegFrames()
@@ -593,6 +628,7 @@ def test_headset_page_and_offer_boundary(monkeypatch, namespace_package) -> None
         runtime_ready = False
         token_descriptor = None
         token_emitter = None
+        gpu_frame_conversion = False
         socket = None
         source = None
         frames = LatestHeadsetFrames(fps=10.0)
@@ -766,5 +802,168 @@ def test_generation_failure_is_logged_and_reported(caplog):
         assert not manager.runtime_ready
         assert session.model_status == "Generation failed — check server logs"
         assert "denoising failed" in caplog.text
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("deadline_pacing", [False, True])
+def test_mjpeg_deadlines_remove_encode_jitter_without_dropping_frames(monkeypatch, deadline_pacing):
+    now = 0.0
+    published = []
+    delays = [0.005, 0.035, 0.005, 0.025, 0.080, 0.005, 0.005, 0.005]
+
+    async def inline(function, *args):
+        return function(*args)
+
+    async def sleep(seconds):
+        nonlocal now
+        now += seconds
+
+    def encode(frame):
+        nonlocal now
+        now += delays[frame]
+        return bytes([frame])
+
+    monkeypatch.setattr(server_module.asyncio, "to_thread", inline)
+    monkeypatch.setattr(server_module.asyncio, "sleep", sleep)
+    monkeypatch.setattr(server_module.time, "perf_counter", lambda: now)
+    monkeypatch.setattr(server_module, "encode_rgb_frame_to_jpeg", encode)
+    manager = HeadsetServer(
+        session=SimpleNamespace(config=SimpleNamespace(profile=False)),
+        frames=LatestHeadsetFrames(fps=30),
+        display_fps=20,
+        deadline_pacing=deadline_pacing,
+    )
+    track = object()
+    manager.track = track
+    manager._ready.set()
+    monkeypatch.setattr(
+        manager._jpeg_changed, "notify_all",
+        lambda: published.append((manager._jpeg[0], now)) if manager._jpeg is not None else None,
+    )
+
+    async def check():
+        monkeypatch.setattr(asyncio.get_running_loop(), "time", lambda: now)
+        result = SimpleNamespace(metadata={})
+        for block in (tuple(range(4)), tuple(range(4, 8))):
+            await manager._publish_mjpeg(track, result, block, now, now)
+        assert [frame for frame, _ in published] == list(range(8))
+        intervals = [b[1] - a[1] for a, b in zip(published, published[1:])]
+        if deadline_pacing:
+            # Late encoding at the chunk boundary delays one frame. It must not
+            # trigger a burst of catch-up frames, drift, or discard any frame.
+            assert intervals == pytest.approx([0.05, 0.05, 0.05, 0.08, 0.05, 0.05, 0.05])
+        else:
+            assert intervals[:3] == pytest.approx([0.08, 0.02, 0.07])
+        await manager.reset_video()
+        manager.track = track
+        manager._ready.set()
+        now_before_reset_frame = now
+        await manager._publish_mjpeg(track, result, (0,), now, now)
+        assert published[-1][1] == pytest.approx(now_before_reset_frame + delays[0])
+
+    asyncio.run(check())
+
+
+def test_mjpeg_deadline_wait_rechecks_disconnect(monkeypatch):
+    async def inline(function, *args):
+        return function(*args)
+
+    async def disconnect(_seconds):
+        manager.track = None
+        manager._ready.clear()
+
+    monkeypatch.setattr(server_module.asyncio, "to_thread", inline)
+    monkeypatch.setattr(server_module.asyncio, "sleep", disconnect)
+    monkeypatch.setattr(server_module, "encode_rgb_frame_to_jpeg", lambda _: b"stale")
+    manager = HeadsetServer(
+        session=SimpleNamespace(config=SimpleNamespace(profile=False)),
+        frames=LatestHeadsetFrames(fps=30),
+        deadline_pacing=True,
+    )
+    track = object()
+    manager.track = track
+    manager._ready.set()
+    manager._last_publish_s = server_module.time.perf_counter()
+    asyncio.run(manager._publish_mjpeg(track, SimpleNamespace(metadata={}), (None,), 0, 0))
+    assert manager._jpeg is None
+
+
+def test_gpu_frame_conversion_keeps_cpu_fallback():
+    import torch
+
+    video = torch.tensor([-1.1, -1.0, 0.0, 0.5, 1.0, 1.1]).reshape(1, 1, 2, 3)
+    result = SimpleNamespace(video_chunk=video, layout="thwc")
+    baseline = server_module.MjpegFrames().prepare_result_frames(result)
+    candidate = server_module.MjpegFrames(gpu_frame_conversion=True).prepare_result_frames(result)
+    np.testing.assert_array_equal(candidate, baseline)
+
+
+def test_dedicated_worker_preserves_context_and_serializes_shutdown():
+    """Exercise actual init, scene switch, generation, conversion and cancellation."""
+    context = contextvars.ContextVar("inference_test_context", default=None)
+    calls = []
+    blocked = threading.Event()
+    release = threading.Event()
+
+    def record(name):
+        calls.append((name, threading.get_ident(), context.get()))
+
+    def step(_window):
+        record("step")
+        if sum(name == "step" for name, _, _ in calls) == 2:
+            blocked.set()
+            assert release.wait(timeout=5), "test did not release in-flight inference"
+            record("step_finished")
+        return SimpleNamespace(metadata={"action_rows": 1})
+
+    def prepare(_result):
+        record("prepare")
+        return ()
+
+    async def check():
+        context.set("request-context")
+        manager = HeadsetServer(
+            session=SimpleNamespace(
+                config=SimpleNamespace(fps=10, profile=False),
+                init=lambda: record("init"),
+                switch_scene=lambda _: record("switch"),
+                next_step_requirements=lambda: SimpleNamespace(input_frame_count=1),
+                step=step,
+                close=lambda: record("close"),
+            ),
+            frames=LatestHeadsetFrames(fps=30),
+            dedicated_inference_thread=True,
+            scenes={"a": object(), "b": object()},
+        )
+
+        async def close_socket():
+            pass
+
+        try:
+            await manager.start()
+            assert await manager._run_inference(lambda *, decode: decode, decode=False) is False
+            await asyncio.wait_for(manager.select_scene("b"), timeout=2)
+            manager.track = SimpleNamespace(prepare_result_frames=prepare)
+            manager.socket = SimpleNamespace(close=close_socket)
+            manager._ready.set()
+            assert await asyncio.to_thread(blocked.wait, 2)
+            closing = asyncio.create_task(manager.close())
+            # Cancellation of the asyncio waiter must not permit session cleanup
+            # to overlap the still-running worker, or block the event loop.
+            await asyncio.sleep(0.02)
+            assert not closing.done()
+            assert "close" not in [name for name, _, _ in calls]
+            release.set()
+            await asyncio.wait_for(closing, timeout=2)
+            await manager.close()
+            names = [name for name, _, _ in calls]
+            assert names == ["init", "switch", "step", "prepare", "step", "step_finished", "close"]
+            workers = {worker for _, worker, _ in calls}
+            assert len(workers) == 1 and threading.get_ident() not in workers
+            assert all(value == "request-context" for _, _, value in calls)
+        finally:
+            release.set()
+            await manager.close()
 
     asyncio.run(check())

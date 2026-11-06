@@ -20,12 +20,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import contextvars
+import functools
 import json
 import logging
 import math
 import ssl
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -127,8 +130,14 @@ class LatestHeadsetFrames:
 class MjpegFrames:
     """Convert model frames for Pillow JPEG encoding."""
 
+    def __init__(self, *, gpu_frame_conversion: bool = False) -> None:
+        self.gpu_frame_conversion = gpu_frame_conversion
+
     def prepare_result_frames(self, result: StepResult) -> tuple[Any, ...]:
         video = result.video_chunk
+        if self.gpu_frame_conversion and video.is_cuda and video.is_floating_point():
+            # Match the host float32 scaling before transferring one byte/channel.
+            video = ((video.float() + 1.0) / 2.0 * 255.0).clamp(0, 255).byte()
         return tuple(
             rgb_array_to_uint8_frames(
                 video,
@@ -148,6 +157,9 @@ class HeadsetServer:
         frames: LatestHeadsetFrames,
         display_fps: int = 30,
         overlap_playback: bool = True,
+        deadline_pacing: bool = False,
+        gpu_frame_conversion: bool = False,
+        dedicated_inference_thread: bool = False,
         scenes: dict[str, Cosmos3HDreamsConfig] | None = None,
         scene_labels: dict[str, str] | None = None,
     ) -> None:
@@ -160,6 +172,13 @@ class HeadsetServer:
         self.frames = frames
         self.display_fps = display_fps
         self.overlap_playback = overlap_playback
+        self.deadline_pacing = deadline_pacing
+        self.gpu_frame_conversion = gpu_frame_conversion
+        self.dedicated_inference_thread = dedicated_inference_thread
+        self._inference_executor = (
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix="dreams-inference")
+            if dedicated_inference_thread else None
+        )
         self._last_publish_s: float | None = None
         self._jpeg: bytes | None = None
         self._jpeg_version = 0
@@ -180,7 +199,7 @@ class HeadsetServer:
     async def start(self) -> None:
         """Load the model and begin the asynchronous generation loop."""
         try:
-            await asyncio.to_thread(self.session.init)
+            await self._run_inference(self.session.init)
         except Exception:
             self.session.model_status = "Model startup failed — check server logs"
             logging.getLogger(__name__).exception(
@@ -191,8 +210,19 @@ class HeadsetServer:
         self.runtime_ready = True
         self._producer = asyncio.create_task(self._generate())
 
+    async def _run_inference(self, function, *args, **kwargs):
+        """Keep GPU initialization and execution on the same optional worker."""
+        if self._inference_executor is None:
+            return await asyncio.to_thread(function, *args, **kwargs)
+        context = contextvars.copy_context()
+        return await asyncio.get_running_loop().run_in_executor(
+            self._inference_executor, functools.partial(context.run, function, *args, **kwargs)
+        )
+
     async def close(self) -> None:
         """Stop controller sampling, video delivery, and the model session."""
+        if self._closed:
+            return
         self._closed = True
         self.runtime_ready = False
         self._ready.set()
@@ -207,7 +237,13 @@ class HeadsetServer:
         await self.reset_video()
         if self.socket is not None:
             await self.socket.close()
-        await asyncio.to_thread(self.session.close)
+        try:
+            # Queue cleanup behind an in-flight step even if its asyncio waiter
+            # was cancelled; cancelling that waiter cannot stop its GPU thread.
+            await self._run_inference(self.session.close)
+        finally:
+            if self._inference_executor is not None:
+                self._inference_executor.shutdown(wait=True)
 
     async def reset_video(self) -> None:
         """Clear the current MJPEG image and invalidate in-flight playback."""
@@ -250,7 +286,7 @@ class HeadsetServer:
                             await playback
                         playback = None
                     try:
-                        await asyncio.to_thread(
+                        await self._run_inference(
                             self.session.switch_scene, self.scenes[name]
                         )
                     except Exception:
@@ -296,7 +332,7 @@ class HeadsetServer:
                     self._ready.clear()
                     continue
                 if self.restart_requested:
-                    await asyncio.to_thread(self.session.reset)
+                    await self._run_inference(self.session.reset)
                     self.restart_requested = False
                 requirements = self.session.next_step_requirements()
                 if requirements is None:
@@ -305,7 +341,7 @@ class HeadsetServer:
                         playback = None
                     if self.token_descriptor is None:
                         return
-                    await asyncio.to_thread(self.session.reset)
+                    await self._run_inference(self.session.reset)
                     if self.token_emitter is not None:
                         await self.socket.close(code=1000, message=b"Replay complete; reconnect to restart")
                     else:
@@ -329,9 +365,9 @@ class HeadsetServer:
                 cycle_started = time.perf_counter()
                 try:
                     if emitter is None:
-                        result = await asyncio.to_thread(self.session.step, window)
+                        result = await self._run_inference(self.session.step, window)
                     else:
-                        result = await asyncio.to_thread(self.session.step, window, decode=False)
+                        result = await self._run_inference(self.session.step, window, decode=False)
                 except RuntimeError:
                     if self._closed:
                         return
@@ -355,7 +391,7 @@ class HeadsetServer:
                             result.step_index, tuple(result.output.shape),
                         )
                         continue
-                    frames = await asyncio.to_thread(
+                    frames = await self._run_inference(
                         track.prepare_result_frames, result
                     )
                     if self._scene_request is not None:
@@ -440,6 +476,12 @@ class HeadsetServer:
             started = asyncio.get_running_loop().time()
             jpeg = await asyncio.to_thread(encode_rgb_frame_to_jpeg, frame)
             jpeg_s += asyncio.get_running_loop().time() - started
+            if self.deadline_pacing and self._last_publish_s is not None:
+                # Encode ahead of publication, including across chunk boundaries.
+                # Anchor to the last actual publish so late frames never cause a burst.
+                await asyncio.sleep(
+                    max(0, self._last_publish_s + 1 / self.display_fps - time.perf_counter())
+                )
             if (
                 self.track is not track
                 or not self._ready.is_set()
@@ -458,13 +500,14 @@ class HeadsetServer:
             if index == 0 and self._last_publish_s is not None:
                 boundary_s = published - self._last_publish_s
             self._last_publish_s = published
-            await asyncio.sleep(
-                max(
-                    0,
-                    1 / self.display_fps
-                    - (asyncio.get_running_loop().time() - started),
+            if not self.deadline_pacing:
+                await asyncio.sleep(
+                    max(
+                        0,
+                        1 / self.display_fps
+                        - (asyncio.get_running_loop().time() - started),
+                    )
                 )
-            )
         if self.session.config.profile and result.metadata.get("action_rows"):
             finished = time.perf_counter()
             metrics = result.metrics
@@ -481,6 +524,7 @@ class HeadsetServer:
                 f"cycle={(finished - cycle_started) * 1e3:.1f}ms "
                 f"boundary_interval={boundary_s * 1e3 if boundary_s is not None else 0:.1f}ms "
                 f"overlap={self.overlap_playback} pose_age_first_frame={pose_age} "
+                f"deadline_pacing={self.deadline_pacing} "
                 f"input_span={capture_span}",
                 flush=True,
             )
@@ -544,7 +588,7 @@ def create_app(manager: HeadsetServer) -> web.Application:
         manager.frames.clear()
         if manager.source is not None:
             manager.source.reset_calibration()
-        manager.track = MjpegFrames()
+        manager.track = MjpegFrames(gpu_frame_conversion=manager.gpu_frame_conversion)
         manager.restart_requested = manager.token_descriptor is not None
         if mode == "raw_tokens":
             from flashdreams.serving.token_stream import TokenFrameEmitter, RawFloat16TokenCodecConfig
@@ -603,6 +647,11 @@ def create_app(manager: HeadsetServer) -> web.Application:
         )
         await response.prepare(request)
         version = -1
+        # Complete the next part's headers eagerly: Chromium otherwise holds
+        # the finished image until the next generated frame arrives. MIME
+        # boundaries delimit bodies; per-part Content-Length is optional.
+        part_header = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+        prefix = part_header
         try:
             while not manager._closed:
                 async with manager._jpeg_changed:
@@ -625,13 +674,13 @@ def create_app(manager: HeadsetServer) -> web.Application:
                     break
                 if jpeg is not None:
                     part = (
-                        b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
-                        + str(len(jpeg)).encode()
-                        + b"\r\n\r\n"
+                        prefix
                         + jpeg
                         + b"\r\n"
+                        + part_header
                     )
                     await asyncio.wait_for(response.write(part), timeout=5)
+                    prefix = b""
         except (ConnectionError, TimeoutError):
             pass
         return response
@@ -730,6 +779,24 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--display-fps", type=int, default=30)
     parser.add_argument("--print-actions", action="store_true")
     parser.add_argument(
+        "--deadline-pacing",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Encode ahead of each MJPEG publication deadline to reduce frame jitter",
+    )
+    parser.add_argument(
+        "--gpu-frame-conversion",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Convert decoded floating-point pixels to uint8 on CUDA before host transfer",
+    )
+    parser.add_argument(
+        "--dedicated-inference-thread",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Keep model initialization, inference and GPU frame conversion on one worker",
+    )
+    parser.add_argument(
         "--headset-input-fps",
         type=float,
         help="Acquire measured action windows at this rate, independently of model --fps",
@@ -797,6 +864,9 @@ def main(argv: list[str] | None = None) -> None:
         frames=frames,
         display_fps=network.display_fps,
         overlap_playback=network.overlap_playback,
+        deadline_pacing=network.deadline_pacing,
+        gpu_frame_conversion=network.gpu_frame_conversion,
+        dedicated_inference_thread=network.dedicated_inference_thread,
         scenes=application.scenes,
         scene_labels=application.scene_labels,
     )
@@ -812,7 +882,9 @@ def main(argv: list[str] | None = None) -> None:
         f"acquisition: {'browser rate' if input_fps is None else str(input_fps) + ' Hz'}; "
         f"actions: recorded window; "
         f"video presentation: {network.display_fps} fps; "
-        f"overlap playback: {network.overlap_playback}"
+        f"overlap playback: {network.overlap_playback}; "
+        f"deadline pacing: {network.deadline_pacing}; "
+        f"GPU frame conversion: {network.gpu_frame_conversion}"
     )
     print(f"Open https://<workstation-LAN-IP>:{network.port}/headset in the headset browser")
     print(f"Open https://<workstation-LAN-IP>:{network.port}/viewer on a PC")

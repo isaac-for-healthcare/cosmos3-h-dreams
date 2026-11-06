@@ -39,7 +39,11 @@ async function refreshModelStatus() {
   }
 }
 function send(payload) {
-  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+  if (socket?.readyState !== WebSocket.OPEN) return;
+  // Poses are replaceable state: sample again next XR frame if the link is busy.
+  // Keep explicit commands (such as reset) reliable.
+  if (payload.type === "xr_frame" && socket.bufferedAmount > 0) return;
+  socket.send(JSON.stringify(payload));
 }
 
 function connectVideo() {

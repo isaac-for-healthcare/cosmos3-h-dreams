@@ -68,6 +68,9 @@ def test_yaml_paths_and_scene_defaults(tmp_path, monkeypatch):
         (lambda data: data["runtime"].update(chonk_size=2), "unknown runtime"),
         (lambda data: data["headset"].update(preset=23), "preset must"),
         (lambda data: data["headset"].update(display_fps=True), "integer"),
+        (lambda data: data["headset"].update(deadline_pacing="true"), "boolean"),
+        (lambda data: data["headset"].update(gpu_frame_conversion=1), "boolean"),
+        (lambda data: data["headset"].update(dedicated_inference_thread="false"), "boolean"),
         (lambda data: data["headset"].update(video_transport="mjpeg"), "unknown headset"),
         (lambda data: data["scenes"].append(dict(data["scenes"][0])), "unique"),
         (lambda data: data["scenes"][0].update(height=288), "unknown scene"),
@@ -83,8 +86,11 @@ def test_yaml_rejects_invalid_schema(tmp_path, change, match):
         load_session_config(path)
 
 
-def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch):
-    path, _ = _session_file(tmp_path)
+@pytest.mark.parametrize("cli_flag, expected", [(None, True), ("--no-dedicated-inference-thread", False)])
+def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch, cli_flag, expected):
+    path, data = _session_file(tmp_path)
+    data["headset"]["dedicated_inference_thread"] = True
+    path.write_text(yaml.safe_dump(data))
     monkeypatch.setattr(session_config_module, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(
         sys,
@@ -99,8 +105,11 @@ def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch):
             "headset-base",
             "--display-fps",
             "17",
+            "--deadline-pacing",
+            "--gpu-frame-conversion",
             "--fps",
             "12",
+            *([cli_flag] if cli_flag else []),
         ],
     )
     certificates = []
@@ -120,6 +129,9 @@ def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch):
     (manager,) = managers
     assert certificates == [(str(tmp_path / "cert.pem"), str(tmp_path / "key.pem"))]
     assert manager.display_fps == 17
+    assert manager.deadline_pacing
+    assert manager.gpu_frame_conversion
+    assert manager.dedicated_inference_thread is expected
     assert manager.frames._period_ns == round(1e9 / 30)
     assert all(
         config.fps == 12 and config.chunk_size == 2
@@ -127,6 +139,7 @@ def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch):
     )
     assert manager.session.config.decoder == "taehv"
     assert list(manager.scenes) == ["a", "b"]
+    asyncio.run(manager.close())
 
 
 def test_switch_keeps_model_changes_domain_and_recalibrates(tmp_path, monkeypatch):

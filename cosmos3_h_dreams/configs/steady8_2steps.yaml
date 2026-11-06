@@ -1,0 +1,16 @@
+# Preserve the original eight-frame model chunks; reduce delivery overhead.
+# Run from the patched repository root.
+runtime:
+  preset: wan-taehv-chunk2-2steps-fademem-compile
+  checkpoint: data_local/checkpoints/c3-h-d_2-step_model_bf16.safetensors
+headset:
+  preset: headset-base
+  headset_input_fps: 30.0
+  display_fps: 30
+  deadline_pacing: true
+  gpu_frame_conversion: true
+  dedicated_inference_thread: true
+  cert: cert.pem
+  key: key.pem
+scenes:
+  - initial_frame: assets/example_data/scenes/*.png

@@ -57,6 +57,9 @@ def load_session_config(path: Path) -> dict[str, Any]:
             "display_fps",
             "headset_input_fps",
             "overlap_playback",
+            "deadline_pacing",
+            "gpu_frame_conversion",
+            "dedicated_inference_thread",
             "print_actions",
         },
         "headset",
@@ -134,7 +137,10 @@ def load_session_config(path: Path) -> dict[str, Any]:
             raise ValueError(f"headset.{key} must be an integer")
         elif key == "headset_input_fps" and type(value) not in (float, int):
             raise ValueError("headset.headset_input_fps must be a number")
-        elif key in {"overlap_playback", "print_actions"} and type(value) is not bool:
+        elif key in {
+            "overlap_playback", "deadline_pacing", "gpu_frame_conversion",
+            "dedicated_inference_thread", "print_actions",
+        } and type(value) is not bool:
             raise ValueError(f"headset.{key} must be a boolean")
         elif key == "host" and not isinstance(value, str):
             raise ValueError(f"headset.{key} must be a string")
