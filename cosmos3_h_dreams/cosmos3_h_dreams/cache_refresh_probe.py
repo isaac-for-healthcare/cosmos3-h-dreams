@@ -91,6 +91,8 @@ def main() -> None:
         session.init()
         report["startup_s_including_hidden_compile"] = time.perf_counter() - started
         _, rollout = session._require_runtime()
+        assert rollout.fademem.reuse_cache_rope == config.reuse_cache_rope
+        report["reuse_cache_rope_active"] = rollout.fademem.reuse_cache_rope
         compiled_calls = 0
         compiled_layer = rollout._compiled_refresh_layer
         assert (compiled_layer is not None) == config.compile_cache_refresh
