@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 from pathlib import Path
 
 from aiohttp import web
@@ -54,11 +55,19 @@ def main() -> None:
         "--dedicated-inference-thread", action=argparse.BooleanOptionalAction,
         default=False, help="Initialize and run inference on the same worker.",
     )
+    parser.add_argument(
+        "--generation-lead-ms", type=float, default=0.0,
+        help="MJPEG generation lead before the next block is due; 0 disables deferral",
+    )
     args, model_args = parser.parse_known_args()
     if args.eager_warmup_steps < 0:
         parser.error("--eager-warmup-steps must be non-negative")
     if args.display_fps is not None and args.display_fps <= 0:
         parser.error("--display-fps must be positive")
+    if not math.isfinite(args.generation_lead_ms) or args.generation_lead_ms < 0:
+        parser.error("--generation-lead-ms must be finite and nonnegative")
+    if args.generation_lead_ms and not args.deadline_pacing:
+        parser.error("--generation-lead-ms requires --deadline-pacing")
     application = Cosmos3HDreamsApplication()
     application.init((["--headset"] if args.controls == "keyboard" else []) + model_args)
     session = application.create_session()
@@ -85,6 +94,7 @@ def main() -> None:
         deadline_pacing=args.deadline_pacing,
         gpu_frame_conversion=args.gpu_frame_conversion,
         dedicated_inference_thread=args.dedicated_inference_thread,
+        generation_lead_ms=args.generation_lead_ms,
         scenes=application.scenes,
         scene_labels=application.scene_labels,
     )
@@ -111,10 +121,11 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     logging.getLogger(__name__).info(
         "Keyboard demo: model_fps=%s display_fps=%s chunk_size=%s "
-        "compile=%s cuda_graph=%s deadline_pacing=%s gpu_conversion=%s dedicated_worker=%s",
+        "compile=%s cuda_graph=%s deadline_pacing=%s gpu_conversion=%s dedicated_worker=%s generation_lead_ms=%s",
         session.config.fps, manager.display_fps, session.config.chunk_size,
         session.config.compile_denoise, session.config.cuda_graph_denoise,
         args.deadline_pacing, args.gpu_frame_conversion, args.dedicated_inference_thread,
+        args.generation_lead_ms,
     )
     web.run_app(app, host=args.host, port=args.port)
 

@@ -60,6 +60,7 @@ def load_session_config(path: Path) -> dict[str, Any]:
             "deadline_pacing",
             "gpu_frame_conversion",
             "dedicated_inference_thread",
+            "generation_lead_ms",
             "print_actions",
         },
         "headset",
@@ -135,6 +136,10 @@ def load_session_config(path: Path) -> dict[str, Any]:
             headset[key] = str(_path(value, base))
         elif key in {"display_fps", "port"} and type(value) is not int:
             raise ValueError(f"headset.{key} must be an integer")
+        elif key == "generation_lead_ms" and (
+            type(value) not in (float, int) or not isfinite(value) or value < 0
+        ):
+            raise ValueError("headset.generation_lead_ms must be finite and nonnegative")
         elif key == "headset_input_fps" and type(value) not in (float, int):
             raise ValueError("headset.headset_input_fps must be a number")
         elif key in {

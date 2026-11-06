@@ -32,7 +32,8 @@ def test_keyboard_presentation_flags_preserve_model_settings(monkeypatch, enable
     ]
     if enabled:
         argv += ["--display-fps", "30", "--deadline-pacing",
-                 "--gpu-frame-conversion", "--dedicated-inference-thread"]
+                 "--gpu-frame-conversion", "--dedicated-inference-thread",
+                 "--generation-lead-ms", "180"]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(token_demo, "HeadsetServer", manager)
     monkeypatch.setattr(token_demo, "prepare_decoder", lambda *a, **kw: {"version": "test"})
@@ -45,6 +46,7 @@ def test_keyboard_presentation_flags_preserve_model_settings(monkeypatch, enable
     assert captured["display_fps"] == (30 if enabled else 10)
     for name in ["deadline_pacing", "gpu_frame_conversion", "dedicated_inference_thread"]:
         assert captured[name] is enabled
+    assert captured["generation_lead_ms"] == (180 if enabled else 0)
     assert captured["network"] == {"host": "127.0.0.1", "port": 8081}
     assert "/keyboard" in captured["routes"]
 
@@ -52,6 +54,17 @@ def test_keyboard_presentation_flags_preserve_model_settings(monkeypatch, enable
 @pytest.mark.parametrize("fps", ["0", "-1"])
 def test_invalid_presentation_rate_fails_before_model_setup(monkeypatch, fps):
     monkeypatch.setattr(sys, "argv", ["token_demo", "--display-fps", fps])
+    with pytest.raises(SystemExit) as error:
+        token_demo.main()
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("args", [
+    ["--generation-lead-ms", "-1"], ["--generation-lead-ms", "nan"],
+    ["--generation-lead-ms", "inf"], ["--generation-lead-ms", "180"],
+])
+def test_invalid_generation_lead_fails_before_model_setup(monkeypatch, args):
+    monkeypatch.setattr(sys, "argv", ["token_demo", *args])
     with pytest.raises(SystemExit) as error:
         token_demo.main()
     assert error.value.code == 2

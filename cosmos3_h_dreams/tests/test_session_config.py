@@ -71,6 +71,9 @@ def test_yaml_paths_and_scene_defaults(tmp_path, monkeypatch):
         (lambda data: data["headset"].update(deadline_pacing="true"), "boolean"),
         (lambda data: data["headset"].update(gpu_frame_conversion=1), "boolean"),
         (lambda data: data["headset"].update(dedicated_inference_thread="false"), "boolean"),
+        (lambda data: data["headset"].update(generation_lead_ms=True), "finite and nonnegative"),
+        (lambda data: data["headset"].update(generation_lead_ms=-1), "finite and nonnegative"),
+        (lambda data: data["headset"].update(generation_lead_ms=float("nan")), "finite and nonnegative"),
         (lambda data: data["headset"].update(video_transport="mjpeg"), "unknown headset"),
         (lambda data: data["scenes"].append(dict(data["scenes"][0])), "unique"),
         (lambda data: data["scenes"][0].update(height=288), "unknown scene"),
@@ -90,6 +93,7 @@ def test_yaml_rejects_invalid_schema(tmp_path, change, match):
 def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch, cli_flag, expected):
     path, data = _session_file(tmp_path)
     data["headset"]["dedicated_inference_thread"] = True
+    data["headset"]["generation_lead_ms"] = 180
     path.write_text(yaml.safe_dump(data))
     monkeypatch.setattr(session_config_module, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(
@@ -129,6 +133,7 @@ def test_both_yaml_presets_and_cli_overrides(tmp_path, monkeypatch, cli_flag, ex
     (manager,) = managers
     assert certificates == [(str(tmp_path / "cert.pem"), str(tmp_path / "key.pem"))]
     assert manager.display_fps == 17
+    assert manager.generation_lead_ms == 180
     assert manager.deadline_pacing
     assert manager.gpu_frame_conversion
     assert manager.dedicated_inference_thread is expected

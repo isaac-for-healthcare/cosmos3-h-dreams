@@ -25,7 +25,7 @@ workspace defaults to CUDA 13. Supply the public two-step BF16 checkpoint from
 The source fork does not redistribute downloaded weights or decoder exports.
 
 ```bash
-git clone --branch codex/steady8-keyboard --single-branch \
+git clone --branch codex/eight-frame-scheduling --single-branch \
   https://github.com/huvers/cosmos3-h-dreams.git
 cd cosmos3-h-dreams
 uv sync --package flashdreams-cosmos3-h-dreams --extra token-stream --locked
@@ -101,6 +101,53 @@ The first, second and fourth changes remain opt-in. Their inverse flags are
 header fix. Defaults otherwise retain the fork’s original presentation behavior.
 The documented command enables the combination exercised by the H100 harness.
 
+## Optional eight-frame scheduling
+
+On the keyboard **Pixel** path, add `--generation-lead-ms 180` to the command
+above to try the H100 scheduling setting. `--generation-lead-ms 0` disables
+scheduling deferral. The default is zero; deadline pacing and overlapping
+playback are required. The same option is accepted by the headset CLI and as
+`headset.generation_lead_ms` in session YAML. Raw Tokens uses its own flow control
+and bypasses this option. Headset pose acquisition has not been benchmarked with
+this setting.
+
+The scheduler waits before capturing controls and generating the next block,
+leaving the requested lead time before its predicted presentation deadline.
+It retains eight-frame generation and ordered playback. Disconnects, resets and
+scene requests invalidate the deadline; cancellation interrupts the wait.
+
+**Calibrate the lead for the actual GPU and workload.** A smaller lead captures
+newer controls but can starve playback if inference takes longer. Start with
+scheduling disabled, measure high-percentile input acquisition plus generation,
+decode and frame preparation time, and leave a margin for variation and JPEG
+encoding. If that work consumes the whole eight-frame display budget (267 ms at
+30 fps), scheduling has little spare time to reclaim. The 180 ms H100 setting
+is not a measured RTX PRO 6000 recommendation.
+
+Prototype results on H100/Chromium, with eight frames and 30 fps in every case:
+
+| Keyboard path | Median control-to-browser | P95 |
+| --- | ---: | ---: |
+| Current scheduling | 451.5 ms | 566.4 ms |
+| 180 ms generation lead | 333.0 ms | 450.5 ms |
+| Controlled delayed link, current | 513.4 ms | 636.5 ms |
+| Controlled delayed link, 180 ms lead | 406.2 ms | 522.5 ms |
+
+Local trials used baseline/candidate/candidate/baseline order, 45 seconds each,
+with seconds 10–42 measured: 64 control changes per path, all consumed and
+observed. There were no missing intermediate frame IDs or gaps over 100 ms in
+any selected window. FPS was about 29.5. The paired delayed-link trials used
+25 ms each direction, deterministic ±10 ms variation, 20 Mbps down/1 Mbps up.
+The local median reduction was **118.5 ms / 26.3%**. Prepared-block waiting fell
+from 129.4 to 7.3 ms; inference and preparation remained about 142 ms.
+
+All 512 full-resolution fixed-replay frames matched pixel-for-pixel across the
+prototype paths, including cache boundaries; both resets exactly reproduced
+the opening eight frames. These are software keyboard-to-decoded-image timing
+and fixed-replay checks, not optical display or semantic motion-onset results.
+Do not add these savings to earlier experiments or compare their absolute times
+to the Mac/VPN or headset pose-sampler results.
+
 ## Evidence and limits
 
 These are short software-timing experiments, not optical display/physical
@@ -152,7 +199,19 @@ limits of MAE ≤3 and PSNR ≥32 dB. Longer latent-rollout quality remains unva
 If the browser decoder runs on RTX instead of Apple hardware, repeat this test;
 the Apple result does not establish which transport wins there.
 
-### Validation scope of this public branch
+### Integrated scheduling validation
+
+The integrated server option passed 74 CPU tests, the browser JavaScript checks,
+and a separate H100/browser rerun. A matched pair of 45-second local keyboard
+trials (32 measured state changes per path) gave median **454.5 → 337.8 ms** and
+p95 **562.4 → 447.0 ms**, with zero missing frame IDs and zero gaps over 100 ms
+in seconds 10–42. The integrated 512-frame fixed replay matched the original
+baseline pixel-for-pixel; reset reproduced the first eight frames exactly.
+This confirms the product scheduler path; the launchers' option wiring was
+covered by CPU tests. RTX PRO 6000 and headset motion-to-screen timing remain
+unmeasured.
+
+### Earlier validation of the baseline branch
 
 The merged server implementation passed the live H100/browser experiment. This
 publication adds CLI wiring for the same server options and a headset YAML
