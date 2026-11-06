@@ -339,6 +339,19 @@ The manual CUDA probe accepts `--defer-cache-refresh` and reports frame-readines
 timings separately from complete cache-drained throughput. Synchronized stage
 profiling drains refresh inside the step and does not measure this delivery gain.
 
+The packaged implementation passed **172 product CPU tests** on Eos.
+Fresh off/on processes each reproduced all 512 compiled-reference frames exactly;
+reset, scene return, pending-work reset/close and synchronous Raw Tokens fallback
+passed. Raw latent hashes matched. A further 512-frame paced product replay and
+its reset also matched exactly. Tested source: `b89475cfc85468c04bdd2efeda310feae1b00d6c`.
+
+A separate integrated browser check (one 35-second trial per mode, seconds 10–32,
+22 measured controls per mode) gave median **316.05 → 281.25 ms** and
+p95 **432.69 → 388.59 ms**, using 160/120 ms leads. All controls were
+observed, with no missing frame IDs or gaps over 100 ms. This confirms the packaged
+path; the four-trial prototype above remains the primary performance comparison.
+Concurrent GPU integration-probe timings are diagnostic, not an isolated benchmark.
+
 ## Evidence and limits
 
 These are short software-timing experiments, not optical display/physical
