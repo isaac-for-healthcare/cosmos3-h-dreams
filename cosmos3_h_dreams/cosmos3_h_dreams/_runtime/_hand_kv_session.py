@@ -112,6 +112,7 @@ def validate_cache_options(
     fademem_merge_selection: str = "age",
     window_frames: int = DEFAULT_WINDOW_FRAMES,
     overlap_cache_update: bool = False,
+    reuse_cache_rope: bool = False,
     compile_cache_refresh: bool = False,
     compile_denoise: bool = False,
     fixed_shape_cache_fill: bool = False,
@@ -177,6 +178,8 @@ def validate_cache_options(
             "valid_length_cache_attention requires PyTorch varlen FlashAttention"
         )
     device_type = torch.device(device).type
+    if reuse_cache_rope and cache_mode != "fademem":
+        raise ValueError("reuse_cache_rope requires cache_mode='fademem'")
     if compile_cache_refresh:
         if cache_mode != "fademem":
             raise ValueError("compile_cache_refresh requires cache_mode='fademem'")
@@ -228,6 +231,7 @@ class HandKVSession:
         overlap_cache_update: Write the clean K/V back on a side CUDA stream so
             the frames can be decoded while the cache catches up. Requires
             ``cache_mode="block"`` or ``"fademem"``; a no-op off CUDA.
+        reuse_cache_rope: Reuse positional factors across FadeMem layers.
         compile_cache_refresh: Experimental, default-off compilation of stateless
             refresh layers once FadeMem is full. Cache fill and mutation stay
             eager. Requires CUDA and ``compile_denoise`` for hidden warmup.
@@ -282,6 +286,7 @@ class HandKVSession:
         fademem_beta: float = 0.3,
         fademem_merge_selection: str = "age",
         overlap_cache_update: bool = False,
+        reuse_cache_rope: bool = False,
         compile_cache_refresh: bool = False,
         compile_denoise: bool = False,
         compile_denoise_mode: str = "max-autotune-no-cudagraphs",
@@ -350,6 +355,7 @@ class HandKVSession:
         self.cache_mode = str(cache_mode)
         self.cache_refresh_mode = str(cache_refresh_mode)
         self.overlap_cache_update = bool(overlap_cache_update)
+        self.reuse_cache_rope = bool(reuse_cache_rope)
         self.compile_cache_refresh = bool(compile_cache_refresh)
         self.compile_denoise = bool(compile_denoise)
         self.fixed_shape_cache_fill = bool(fixed_shape_cache_fill)
@@ -363,6 +369,7 @@ class HandKVSession:
             fademem_merge_selection=fademem_merge_selection,
             window_frames=max(0, int(window_frames)),
             overlap_cache_update=self.overlap_cache_update,
+            reuse_cache_rope=self.reuse_cache_rope,
             compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,
             fixed_shape_cache_fill=self.fixed_shape_cache_fill,
@@ -520,6 +527,7 @@ class HandKVSession:
                 chunk_frames=self.chunk_size,
                 positions=self._positions,
                 spec=self.spec,
+                reuse_cache_rope=self.reuse_cache_rope,
             )
             self.cache = None
         self._abs_frame = 1

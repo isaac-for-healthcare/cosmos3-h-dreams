@@ -21,6 +21,7 @@ def test_cache_compile_is_off_in_every_preset(tmp_path):
             **preset, "checkpoint": "unused", "initial_frame": frame,
         })
         assert not config.compile_cache_refresh
+        assert not config.reuse_cache_rope
 
 
 @pytest.mark.parametrize("overrides, message", [

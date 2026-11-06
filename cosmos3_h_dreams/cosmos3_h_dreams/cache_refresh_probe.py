@@ -35,6 +35,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--mode", choices=("eager", "compiled"), required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--reuse-cache-rope", action="store_true")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--frames", type=int, default=512)
     parser.add_argument("--reference-quality", type=Path,
@@ -57,7 +58,8 @@ def main() -> None:
         "checkpoint": args.checkpoint, "seed": args.seed,
         "initial_frame": Path("assets/example_data/scenes/example_frame.png"),
         "actions": args.output / "actions.npy",
-        "compile_cache_refresh": args.mode == "compiled", "profile": False,
+        "compile_cache_refresh": args.mode == "compiled",
+        "reuse_cache_rope": args.reuse_cache_rope, "profile": False,
     })
     session = Cosmos3HDreamsSession(config=config)
     converter = MjpegFrames(gpu_frame_conversion=True)

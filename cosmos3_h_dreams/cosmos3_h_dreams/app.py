@@ -141,6 +141,12 @@ class Cosmos3HDreamsApplication(IFlashDreamsApplication):
             default=False,
         )
         parser.add_argument(
+            "--reuse-cache-rope",
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help="Experimental: reuse positional factors across FadeMem layers. Default off.",
+        )
+        parser.add_argument(
             "--compile-cache-refresh",
             action=argparse.BooleanOptionalAction,
             default=False,

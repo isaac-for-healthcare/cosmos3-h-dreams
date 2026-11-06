@@ -73,6 +73,7 @@ class HandModel:
         fademem_beta: FadeMem power-law age exponent in ``(0, 1]``.
         fademem_merge_selection: Adjacent-pair ranking, ``age`` or latent ``cosine``.
         overlap_cache_update: Write clean K/V back on a side CUDA stream.
+        reuse_cache_rope: Reuse positional factors across FadeMem layers.
         compile_cache_refresh: Experimental compiled saturated FadeMem refresh.
         compile_denoise: ``torch.compile`` the velocity call.
         compile_denoise_mode: torch.compile mode for that call.
@@ -108,6 +109,7 @@ class HandModel:
         fademem_beta: float = 0.3,
         fademem_merge_selection: str = "age",
         overlap_cache_update: bool = False,
+        reuse_cache_rope: bool = False,
         compile_cache_refresh: bool = False,
         compile_denoise: bool = False,
         compile_denoise_mode: str = "max-autotune-no-cudagraphs",
@@ -139,6 +141,7 @@ class HandModel:
         self.fademem_beta = fademem_beta
         self.fademem_merge_selection = fademem_merge_selection
         self.overlap_cache_update = bool(overlap_cache_update)
+        self.reuse_cache_rope = bool(reuse_cache_rope)
         self.compile_cache_refresh = bool(compile_cache_refresh)
         self.compile_denoise = bool(compile_denoise)
         self.compile_denoise_mode = str(compile_denoise_mode)
@@ -165,6 +168,7 @@ class HandModel:
             cache_refresh_mode=self.cache_refresh_mode,
             window_frames=self.window_frames,
             overlap_cache_update=self.overlap_cache_update,
+            reuse_cache_rope=self.reuse_cache_rope,
             compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,
             fixed_shape_cache_fill=self.fixed_shape_cache_fill,
@@ -267,6 +271,7 @@ class HandModel:
             fademem_merge_selection=self.fademem_merge_selection,
             cache_refresh_mode=self.cache_refresh_mode,
             overlap_cache_update=self.overlap_cache_update,
+            reuse_cache_rope=self.reuse_cache_rope,
             compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,
             compile_denoise_mode=self.compile_denoise_mode,

@@ -90,6 +90,8 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         if self._model is not None:
             return
         print(f"[cosmos3-h-dreams] {self.model_status}", flush=True)
+        if self.config.reuse_cache_rope:
+            print("[cosmos3-h-dreams] Experimental cache positional-factor reuse enabled.", flush=True)
         if self.config.compile_cache_refresh:
             print(
                 "[cosmos3-h-dreams] Experimental compiled cache refresh enabled; "
@@ -119,6 +121,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
             fademem_beta=self.config.fademem_beta,
             fademem_merge_selection=self.config.fademem_merge_selection,
             overlap_cache_update=self.config.overlap_cache_update,
+            reuse_cache_rope=self.config.reuse_cache_rope,
             compile_cache_refresh=self.config.compile_cache_refresh,
             compile_denoise=self.config.compile_denoise,
             compile_denoise_mode=self.config.compile_denoise_mode,
@@ -508,6 +511,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         print(
             f"cache: {self.config.cache_mode} | "
             f"overlap: {self.config.overlap_cache_update} | "
+            f"cache positional reuse: {self.config.reuse_cache_rope} | "
             f"experimental cache compile: {self.config.compile_cache_refresh} | "
             f"compile: {self.config.compile_denoise} "
             f"({self.config.compile_denoise_mode}) | "

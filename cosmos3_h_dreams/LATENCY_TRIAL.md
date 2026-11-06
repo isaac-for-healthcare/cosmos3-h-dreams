@@ -220,6 +220,58 @@ Recalibrate `--generation-lead-ms` after changing generation speed. Do not add
 the cache-generation saving directly to the scheduler's control-to-browser
 saving. Neither 180 ms lead nor the 11.34% improvement is an RTX PRO 6000 promise.
 
+### Lead recalibration with compiled refresh
+
+With `--compile-cache-refresh` enabled, a matched H100/Chromium trial supports
+`--generation-lead-ms 160` as a useful opt-in for the keyboard Pixel path.
+Four fresh-process, 45-second trials ran in 180/160/160/180 ms order, with
+seconds 10–42 measured: 64 control transitions per setting, all consumed and
+observed. The default remains 0 (disabled).
+
+| Lead with compiled refresh | Median control-to-browser | P95 |
+| --- | ---: | ---: |
+| 180 ms | 332.75 ms | 451.46 ms |
+| 160 ms | 317.60 ms | 431.36 ms |
+
+The median saving was **15.15 ms / 4.55%**. Both paths sustained approximately
+29.5 fps with no missing intermediate frame IDs and no gaps above 100 ms in the
+measured windows. A 512-frame replay at 160 ms reproduced the published compiled
+reference exactly, including reset. This is a scheduling gain, not additional
+generation acceleration. Generation plus frame preparation remained about
+123–124 ms. These are Eos-local software browser timings; RTX PRO 6000, actual
+network/client and headset input acquisition need their own lead calibration.
+
+### Experimental reuse of cache positional factors (default off)
+
+Add `--reuse-cache-rope` to compute the temporal sine/cosine tensors once per
+cache prepare/commit operation and reuse them across layers. Use
+`--no-reuse-cache-rope` to disable it. Session YAML accepts
+`runtime.reuse_cache_rope: true`; every preset leaves it off. FadeMem is required.
+The transformation arithmetic, keys/values, cache validation, merge decisions
+and buffer movement remain unchanged. Factors are local to one operation and
+are recomputed after position or history changes.
+
+Status: **Useful opt-in on the measured H100 stack**. With per-layer compiled
+refresh enabled in both modes, 32 timed chunks after eight warmup chunks gave
+**121.33 → 117.77 ms per eight frames**, saving **3.56 ms / 2.93%** through
+prepared uint8 RGB. The 72 temporal-factor computations per chunk fell to two.
+All 512 moving and 128 static frames, cache merge schedules, reset and scene
+return matched exactly. Peak allocated VRAM stayed at 36.58 GiB. This preserves
+the published compiled path's output on the tested replay; its existing
+numerical differences from eager refresh still apply.
+
+The manual probe above accepts `--reuse-cache-rope` for target-GPU evaluation.
+The browser lead comparison used compiled refresh without positional reuse;
+it does not establish extra browser-latency savings from this second option.
+
+Compiling all 36 stateless refresh layers together was also tested. It saved
+only **0.99 ms / 0.82%** (121.33 → 120.33 ms) and introduced further numerical
+differences after frame 56. Adding it to positional reuse yielded 117.36 ms,
+only 0.42 ms faster than reuse alone. Both missed the predeclared whole-pass
+speed gate of 5 ms and 4%, so whole-pass compilation is **Rejected** and is not
+part of the product. Finite, reset and scene-return checks passed; numerical
+drift by itself is not a semantic quality failure.
+
 ## Evidence and limits
 
 These are short software-timing experiments, not optical display/physical

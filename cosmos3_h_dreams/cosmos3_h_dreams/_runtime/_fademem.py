@@ -46,11 +46,13 @@ class CosmosFadeMem:
         chunk_frames: int,
         positions: Callable[[int, int], Tensor],
         spec: Cosmos3HDreamsSpec,
+        reuse_cache_rope: bool = False,
     ) -> None:
         """Seed memory from text plus one clean frame in the normal Cosmos cache."""
         self.chunk_frames = chunk_frames
         self.positions: Callable[[int, int], Tensor] = positions
         self.spec = spec
+        self.reuse_cache_rope = bool(reuse_cache_rope)
         self.text = [
             (layer["k"][:, :, :n_text].clone(), layer["v"][:, :, :n_text].clone())
             for layer in cache
@@ -87,16 +89,25 @@ class CosmosFadeMem:
         )
         self.valid_length = torch.zeros((), dtype=torch.int32, device=self.mask.device)
 
-    def rotate_temporal(
-        self, key: Tensor, positions: Tensor, *, inverse: bool = False
-    ) -> Tensor:
-        """Remove/reapply only temporal mRoPE, including fractional action times."""
+    def _temporal_factors(self, positions: Tensor) -> tuple[Tensor, Tensor]:
+        """Compute factors shared by every layer in one prepare/commit call."""
         temporal = positions.clone()
         temporal[1:] = 0
         llm = self.spec.llm
-        cos, sin = mrope_cos_sin(
+        return mrope_cos_sin(
             temporal, llm.head_dim, llm.rope_theta, llm.mrope_section
         )
+
+    def rotate_temporal(
+        self,
+        key: Tensor,
+        positions: Tensor,
+        *,
+        inverse: bool = False,
+        factors: tuple[Tensor, Tensor] | None = None,
+    ) -> Tensor:
+        """Remove/reapply temporal mRoPE, optionally reusing per-operation factors."""
+        cos, sin = self._temporal_factors(positions) if factors is None else factors
         x = key.float()
         half = x.shape[-1] // 2
         rotated = torch.cat((-x[..., half:], x[..., :half]), dim=-1)
@@ -111,10 +122,13 @@ class CosmosFadeMem:
         centers, current = self.memory.attention_positions(start, self.chunk_frames)
         positions = torch.cat([self.positions(center, 1) for center in centers], dim=1)
         valid = self.memory.count * self.memory.tokens_per_frame
+        factors = self._temporal_factors(positions) if self.reuse_cache_rope else None
         for (key, _), (prepared_k, _) in zip(
             self.memory.layers(), self.prepared, strict=True
         ):
-            prepared_k[:, :, :valid].copy_(self.rotate_temporal(key, positions))
+            prepared_k[:, :, :valid].copy_(
+                self.rotate_temporal(key, positions, factors=factors)
+            )
         self.mask.zero_()
         self.mask[: self.text[0][0].shape[2] + valid] = True
         self.valid_length.fill_(self.text[0][0].shape[2] + valid)
@@ -136,9 +150,13 @@ class CosmosFadeMem:
         descriptors: Tensor | None = None,
     ) -> None:
         """Commit only finalized clean keys, using their attention-time positions."""
+        factors = self._temporal_factors(positions) if self.reuse_cache_rope else None
         self.memory.append(
             start,
-            [(self.rotate_temporal(k, positions, inverse=True), v) for k, v in layers],
+            [
+                (self.rotate_temporal(k, positions, inverse=True, factors=factors), v)
+                for k, v in layers
+            ],
             descriptors=descriptors,
         )
 
