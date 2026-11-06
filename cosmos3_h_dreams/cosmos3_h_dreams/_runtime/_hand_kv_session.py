@@ -112,6 +112,7 @@ def validate_cache_options(
     fademem_merge_selection: str = "age",
     window_frames: int = DEFAULT_WINDOW_FRAMES,
     overlap_cache_update: bool = False,
+    compile_cache_refresh: bool = False,
     compile_denoise: bool = False,
     fixed_shape_cache_fill: bool = False,
     valid_length_cache_attention: bool = False,
@@ -176,6 +177,13 @@ def validate_cache_options(
             "valid_length_cache_attention requires PyTorch varlen FlashAttention"
         )
     device_type = torch.device(device).type
+    if compile_cache_refresh:
+        if cache_mode != "fademem":
+            raise ValueError("compile_cache_refresh requires cache_mode='fademem'")
+        if not compile_denoise:
+            raise ValueError("compile_cache_refresh requires compile_denoise=True")
+        if device_type != "cuda":
+            raise ValueError("compile_cache_refresh requires a CUDA device")
     if valid_length_cache_attention and (
         device_type != "cuda" or not torch.cuda.is_available()
     ):
@@ -220,6 +228,9 @@ class HandKVSession:
         overlap_cache_update: Write the clean K/V back on a side CUDA stream so
             the frames can be decoded while the cache catches up. Requires
             ``cache_mode="block"`` or ``"fademem"``; a no-op off CUDA.
+        compile_cache_refresh: Experimental, default-off compilation of stateless
+            refresh layers once FadeMem is full. Cache fill and mutation stay
+            eager. Requires CUDA and ``compile_denoise`` for hidden warmup.
         compile_denoise: ``torch.compile`` one velocity evaluation. Requires
             a fixed-buffer cache (``block`` or ``fademem``), whose buffers give
             the stable shapes compile needs.
@@ -271,6 +282,7 @@ class HandKVSession:
         fademem_beta: float = 0.3,
         fademem_merge_selection: str = "age",
         overlap_cache_update: bool = False,
+        compile_cache_refresh: bool = False,
         compile_denoise: bool = False,
         compile_denoise_mode: str = "max-autotune-no-cudagraphs",
         fixed_shape_cache_fill: bool = False,
@@ -338,6 +350,7 @@ class HandKVSession:
         self.cache_mode = str(cache_mode)
         self.cache_refresh_mode = str(cache_refresh_mode)
         self.overlap_cache_update = bool(overlap_cache_update)
+        self.compile_cache_refresh = bool(compile_cache_refresh)
         self.compile_denoise = bool(compile_denoise)
         self.fixed_shape_cache_fill = bool(fixed_shape_cache_fill)
         self.valid_length_cache_attention = bool(valid_length_cache_attention)
@@ -350,6 +363,7 @@ class HandKVSession:
             fademem_merge_selection=fademem_merge_selection,
             window_frames=max(0, int(window_frames)),
             overlap_cache_update=self.overlap_cache_update,
+            compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,
             fixed_shape_cache_fill=self.fixed_shape_cache_fill,
             valid_length_cache_attention=self.valid_length_cache_attention,
@@ -366,6 +380,19 @@ class HandKVSession:
             else None
         )
         self._pending_cache: list[tuple[torch.cuda.Event, tuple[Tensor, Tensor]]] = []
+
+        self._compiled_refresh_layer = None
+        if self.compile_cache_refresh:
+            from cosmos3_h_dreams._runtime._network import _MoTLayer
+
+            # Compile only stateless tensor work. Default mode does not own CUDA
+            # graphs; cache mutation and side-stream ordering remain eager.
+            self._compiled_refresh_layer = torch.compile(
+                _MoTLayer.gen_compute_with_kv,
+                fullgraph=True,
+                dynamic=False,
+                mode="default",
+            )
 
         self.compile_denoise_mode = normalize_compile_denoise_mode(compile_denoise_mode)
         self.cuda_graph_warmup_iters = max(0, int(cuda_graph_warmup_iters))
@@ -869,6 +896,11 @@ class HandKVSession:
             h = self._clean_tokens(n_frames, clean_vision, action)
             committed = []
             within = self._causal_within(n_frames)
+            compiled_layer = (
+                self._compiled_refresh_layer
+                if self.fademem.memory.count == self.fademem.memory.capacity
+                else None
+            )
             with sdpa_kernel_context(torch, self.sdpa_backend):
                 for layer, (text_k, text_v), (hist_k, hist_v) in zip(
                     self._layer_list(),
@@ -876,7 +908,13 @@ class HandKVSession:
                     self.fademem.history(),
                     strict=True,
                 ):
-                    h, key, value = layer.gen_compute_with_kv(
+                    compute = (
+                        compiled_layer
+                        if compiled_layer is not None
+                        else type(layer).gen_compute_with_kv
+                    )
+                    h, key, value = compute(
+                        layer,
                         h,
                         cos,
                         sin,

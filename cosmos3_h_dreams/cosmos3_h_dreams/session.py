@@ -90,6 +90,12 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         if self._model is not None:
             return
         print(f"[cosmos3-h-dreams] {self.model_status}", flush=True)
+        if self.config.compile_cache_refresh:
+            print(
+                "[cosmos3-h-dreams] Experimental compiled cache refresh enabled; "
+                "rollout numerics may differ. Disable with --no-compile-cache-refresh.",
+                flush=True,
+            )
         if self.config.compile_denoise:
             os.environ.setdefault("TORCHINDUCTOR_FX_GRAPH_CACHE", "1")
             os.environ.setdefault(
@@ -113,6 +119,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
             fademem_beta=self.config.fademem_beta,
             fademem_merge_selection=self.config.fademem_merge_selection,
             overlap_cache_update=self.config.overlap_cache_update,
+            compile_cache_refresh=self.config.compile_cache_refresh,
             compile_denoise=self.config.compile_denoise,
             compile_denoise_mode=self.config.compile_denoise_mode,
             cuda_graph_denoise=self.config.cuda_graph_denoise,
@@ -501,6 +508,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
         print(
             f"cache: {self.config.cache_mode} | "
             f"overlap: {self.config.overlap_cache_update} | "
+            f"experimental cache compile: {self.config.compile_cache_refresh} | "
             f"compile: {self.config.compile_denoise} "
             f"({self.config.compile_denoise_mode}) | "
             f"CUDA graph: {self.config.cuda_graph_denoise}"

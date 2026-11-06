@@ -80,6 +80,7 @@ class Cosmos3HDreamsModel(HandModel):
             fademem_merge_selection=self.fademem_merge_selection,
             cache_refresh_mode=self.cache_refresh_mode,
             overlap_cache_update=self.overlap_cache_update,
+            compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,
             compile_denoise_mode=self.compile_denoise_mode,
             fixed_shape_cache_fill=self.fixed_shape_cache_fill,

@@ -13,7 +13,9 @@ The native headset/WebXR entry point remains available.
 Status: **useful opt-in on the tested H100/Chromium stack**. RTX PRO 6000 is a
 validation target, not a GPU on which these numbers have been reproduced.
 No model weights, attention/cache semantics, or shared `flashdreams/` code were
-changed by our optimization patch. The inherited token fork has its own
+changed by our optimization patch. The optional compiled cache refresh described
+below changes floating-point numerics and can change later rollout content and
+cache merge selections. The inherited token fork has its own
 [provenance](../TOKEN_DEMO.md#provenance).
 
 ## Quick start: keyboard, no headset required
@@ -147,6 +149,67 @@ the opening eight frames. These are software keyboard-to-decoded-image timing
 and fixed-replay checks, not optical display or semantic motion-onset results.
 Do not add these savings to earlier experiments or compare their absolute times
 to the Mac/VPN or headset pose-sampler results.
+
+## Experimental compiled cache refresh (default off)
+
+Add `--compile-cache-refresh` to the keyboard command above to compile the
+stateless per-layer cache-refresh computation **only after FadeMem fills**.
+Use `--no-compile-cache-refresh` to return to eager refresh. Every preset leaves
+this option disabled. Headset and action-replay commands accept the same flag;
+session YAML can set `runtime.compile_cache_refresh: true` and the CLI opt-out
+overrides it. CUDA, FadeMem and `--compile-denoise` are required. Compilation
+runs during the existing hidden startup warmup; allow extra startup time on a
+new GPU/compiler cache. Compiler errors remain visible; restart with the flag
+disabled if the target stack cannot compile this path.
+
+Status: **Useful opt-in for experimental evaluation on the tested H100 stack**.
+It preserves eight output frames, two denoising steps, weights, decoder and cache
+policy. Cache filling, positional setup, cache append/merge and side-stream
+ordering remain eager. It is model-side and can be used with Pixel or Raw Tokens;
+browser decoding and network costs are separate. No preset enables it implicitly.
+
+An isolated H100 trial measured **137.70 → 122.09 ms per eight frames**, a
+**15.61 ms / 11.34%** median reduction, over 32 timed chunks after eight warmup
+chunks. Timing ended at prepared host uint8 RGB, not screen presentation. The
+tested stack was H100 80 GB, Python 3.12.3, PyTorch 2.11.0+cu130, CUDA 13.0 and
+cuDNN 91900, with the preset in the keyboard command above and a warm persistent
+compiler cache. These numbers came from the pre-integration experiment, not RTX
+PRO 6000. The eager per-layer CUDA-graph alternative was slower and is not shipped.
+
+**Numerical differences are expected.** In six matched one-minute pairs (seeds
+0/1/7, repeated reversals and abrupt recorded-control changes; 21,600 generated
+frames), all outputs were finite and all 12 within-mode opening-eight reset
+checks were exact. There were no predefined temporal/freeze/black-frame/detail
+review alerts. Candidate/baseline temporal p95 ratios were 0.961–1.028 and
+late-quarter sharpness ratios 0.973–1.010. Sampled images were broadly similar,
+with later tool-position and edge differences; some later cache merges differed.
+This does not establish full-video perceptual equivalence, hallucination rate,
+or semantic control accuracy. Compare longer rollouts on the target GPU.
+
+The product includes a bounded manual CUDA probe. From the repository root,
+run these sequentially on an otherwise idle GPU, in fresh processes:
+
+```bash
+.venv/bin/python -m cosmos3_h_dreams.cache_refresh_probe \
+  --checkpoint /path/to/c3-h-d_2-step_model_bf16.safetensors \
+  --mode eager --output /tmp/dreams-cache-eager
+.venv/bin/python -m cosmos3_h_dreams.cache_refresh_probe \
+  --checkpoint /path/to/c3-h-d_2-step_model_bf16.safetensors \
+  --mode compiled --output /tmp/dreams-cache-compiled
+```
+
+Each output directory must be new. `quality.json` records the commit, command,
+stack/configuration, startup, 32 raw timings and p50/p90/p95, peak allocator memory,
+512 full-resolution frame hashes, finite outputs, reset and scene-return checks.
+`--frames 1800 --seed 7` extends the repeated-motion replay. Record whether the
+persistent compiler cache was cold or warm. `--reference-quality` accepts a
+**same-mode, same-stack** JSON to check integration reproducibility; do not use
+the eager JSON as an exact-pixel quality gate for compiled mode. This probe does
+not measure browser timing or save comparison videos.
+
+Recalibrate `--generation-lead-ms` after changing generation speed. Do not add
+the cache-generation saving directly to the scheduler's control-to-browser
+saving. Neither 180 ms lead nor the 11.34% improvement is an RTX PRO 6000 promise.
 
 ## Evidence and limits
 

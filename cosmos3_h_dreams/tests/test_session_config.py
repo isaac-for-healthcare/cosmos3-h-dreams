@@ -62,6 +62,20 @@ def test_yaml_paths_and_scene_defaults(tmp_path, monkeypatch):
     assert all(config.fps == 12 for config in application.scenes.values())
 
 
+def test_experimental_cache_compile_yaml_and_cli_override(tmp_path, monkeypatch):
+    path, data = _session_file(tmp_path)
+    monkeypatch.setattr(session_config_module, "REPO_ROOT", tmp_path)
+    data["runtime"].update(
+        preset="wan-taehv-chunk2-2steps-fademem-compile",
+        device="cuda:0", compile_cache_refresh=True,
+    )
+    path.write_text(yaml.safe_dump(data))
+    for flags, enabled in [([], True), (["--no-compile-cache-refresh"], False)]:
+        application = Cosmos3HDreamsApplication()
+        application.init(["--session-config", str(path), "--headset", *flags])
+        assert all(c.compile_cache_refresh is enabled for c in application.scenes.values())
+
+
 @pytest.mark.parametrize(
     "change, match",
     [

@@ -73,6 +73,7 @@ class HandModel:
         fademem_beta: FadeMem power-law age exponent in ``(0, 1]``.
         fademem_merge_selection: Adjacent-pair ranking, ``age`` or latent ``cosine``.
         overlap_cache_update: Write clean K/V back on a side CUDA stream.
+        compile_cache_refresh: Experimental compiled saturated FadeMem refresh.
         compile_denoise: ``torch.compile`` the velocity call.
         compile_denoise_mode: torch.compile mode for that call.
         fixed_shape_cache_fill: Use static masked history while the cache fills.
@@ -107,6 +108,7 @@ class HandModel:
         fademem_beta: float = 0.3,
         fademem_merge_selection: str = "age",
         overlap_cache_update: bool = False,
+        compile_cache_refresh: bool = False,
         compile_denoise: bool = False,
         compile_denoise_mode: str = "max-autotune-no-cudagraphs",
         fixed_shape_cache_fill: bool = False,
@@ -137,6 +139,7 @@ class HandModel:
         self.fademem_beta = fademem_beta
         self.fademem_merge_selection = fademem_merge_selection
         self.overlap_cache_update = bool(overlap_cache_update)
+        self.compile_cache_refresh = bool(compile_cache_refresh)
         self.compile_denoise = bool(compile_denoise)
         self.compile_denoise_mode = str(compile_denoise_mode)
         self.fixed_shape_cache_fill = bool(fixed_shape_cache_fill)
@@ -162,6 +165,7 @@ class HandModel:
             cache_refresh_mode=self.cache_refresh_mode,
             window_frames=self.window_frames,
             overlap_cache_update=self.overlap_cache_update,
+            compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,
             fixed_shape_cache_fill=self.fixed_shape_cache_fill,
             valid_length_cache_attention=self.valid_length_cache_attention,
@@ -263,6 +267,7 @@ class HandModel:
             fademem_merge_selection=self.fademem_merge_selection,
             cache_refresh_mode=self.cache_refresh_mode,
             overlap_cache_update=self.overlap_cache_update,
+            compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,
             compile_denoise_mode=self.compile_denoise_mode,
             fixed_shape_cache_fill=self.fixed_shape_cache_fill,

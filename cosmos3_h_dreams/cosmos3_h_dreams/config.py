@@ -208,6 +208,9 @@ class Cosmos3HDreamsConfig:
     overlap_cache_update: bool = False
     """Update fixed-buffer caches on a side CUDA stream."""
 
+    compile_cache_refresh: bool = False
+    """Experimental: compile full FadeMem refresh layers; may change numerics."""
+
     compile_denoise: bool = False
     """Compile the fixed-shape denoising call with ``torch.compile``."""
 
@@ -282,7 +285,9 @@ class Cosmos3HDreamsConfig:
             fademem_merge_selection=self.fademem_merge_selection,
             window_frames=self.window_frames,
             overlap_cache_update=self.overlap_cache_update,
+            compile_cache_refresh=self.compile_cache_refresh,
             compile_denoise=self.compile_denoise,
+            device=self.device,
         )
         if self.compile_denoise_mode not in COMPILE_DENOISE_MODES:
             raise ValueError(

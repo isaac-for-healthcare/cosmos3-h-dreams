@@ -121,9 +121,11 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     logging.getLogger(__name__).info(
         "Keyboard demo: model_fps=%s display_fps=%s chunk_size=%s "
-        "compile=%s cuda_graph=%s deadline_pacing=%s gpu_conversion=%s dedicated_worker=%s generation_lead_ms=%s",
+        "compile=%s cuda_graph=%s experimental_cache_compile=%s "
+        "deadline_pacing=%s gpu_conversion=%s dedicated_worker=%s generation_lead_ms=%s",
         session.config.fps, manager.display_fps, session.config.chunk_size,
         session.config.compile_denoise, session.config.cuda_graph_denoise,
+        session.config.compile_cache_refresh,
         args.deadline_pacing, args.gpu_frame_conversion, args.dedicated_inference_thread,
         args.generation_lead_ms,
     )

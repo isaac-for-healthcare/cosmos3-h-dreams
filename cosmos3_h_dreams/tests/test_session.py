@@ -246,6 +246,7 @@ def test_session_forwards_optimization_flags(
     scene = SimpleNamespace(fps=15.0, replay_actions=torch.zeros((16, 64)))
     monkeypatch.setattr(session_module, "prepare_scene", lambda *_args: scene)
     monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda *_args: None)
     model_kwargs = {}
 
     def model_factory(**kwargs):
@@ -258,12 +259,13 @@ def test_session_forwards_optimization_flags(
             initial_frame=frame,
             actions=actions,
             prompt="A robot folds a towel.",
-            device="cpu",
+            device="cuda:0" if cache_mode == "fademem" else "cpu",
             cache_mode=cache_mode,
             fademem_slots=9,
             fademem_beta=0.4,
             fademem_merge_selection="cosine",
             overlap_cache_update=True,
+            compile_cache_refresh=cache_mode == "fademem",
             compile_denoise=True,
             compile_denoise_mode="default",
             cuda_graph_denoise=True,
@@ -291,6 +293,7 @@ def test_session_forwards_optimization_flags(
         "fademem_beta",
         "fademem_merge_selection",
         "overlap_cache_update",
+        "compile_cache_refresh",
         "compile_denoise",
         "compile_denoise_mode",
         "cuda_graph_denoise",
@@ -372,12 +375,14 @@ def test_cosmos_model_forwards_fademem_selection_to_rollout(monkeypatch):
     model.rollout_seed = 0
     model.action_domain_id = 25
     model.fademem_merge_selection = "cosine"
+    model.compile_cache_refresh = True
     scene = SimpleNamespace(text_ids=None, init_latent=object(), fps=10.0)
     monkeypatch.setattr(
         model_module, "HandKVSession", lambda _net, **kwargs: SimpleNamespace(**kwargs)
     )
     rollout = model._new_session(scene)
     assert rollout.fademem_merge_selection == "cosine"
+    assert rollout.compile_cache_refresh
     assert "fademem_consolidation" not in vars(rollout)
     assert "fademem_position_mode" not in vars(rollout)
 
