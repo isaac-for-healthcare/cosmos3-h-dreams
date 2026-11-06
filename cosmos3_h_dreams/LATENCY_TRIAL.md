@@ -260,6 +260,14 @@ return matched exactly. Peak allocated VRAM stayed at 36.58 GiB. This preserves
 the published compiled path's output on the tested replay; its existing
 numerical differences from eager refresh still apply.
 
+Integrated validation passed 159 product CPU tests and a separate H100 run of
+the packaged option both off and on. Each mode produced 512 finite frames,
+matching every published compiled-reference frame hash and each other exactly;
+reset and scene return reproduced the opening eight frames. The probe verified
+the active option in the actual FadeMem adapter. These two integration processes
+used separate GPUs concurrently; their timings are diagnostic, not additional
+isolated performance evidence.
+
 The manual probe above accepts `--reuse-cache-rope` for target-GPU evaluation.
 The browser lead comparison used compiled refresh without positional reuse;
 it does not establish extra browser-latency savings from this second option.
