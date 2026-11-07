@@ -3,6 +3,8 @@
 
 """Run explicitly on the target GPU before the full matched rollout trial."""
 
+import json
+
 import pytest
 import torch
 
@@ -30,6 +32,9 @@ def test_fp8_real_shapes_compile_and_graph():
         actual = compiled(x)
         torch.cuda.synchronize()
         assert actual.shape == x.shape and torch.isfinite(actual).all().item()
+        difference = actual.float() - eager.float()
+        print(json.dumps({"rows": rows, "eager_compiled_max_abs": difference.abs().max().item(),
+                          "eager_compiled_rmse": difference.square().mean().sqrt().item()}), flush=True)
         torch.testing.assert_close(actual, eager, rtol=.03, atol=.03)
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
@@ -43,3 +48,4 @@ def test_fp8_real_shapes_compile_and_graph():
     graph.replay()
     torch.cuda.synchronize()
     torch.testing.assert_close(captured, actual, rtol=0, atol=0)
+    print(json.dumps({"completed": True, "graph_exact": True}), flush=True)

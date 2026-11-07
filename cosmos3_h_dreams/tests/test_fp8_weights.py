@@ -59,7 +59,7 @@ def test_separate_overlay_roundtrip_selection_and_forward(tmp_path, monkeypatch)
     decoded = q.float() * scale
     gate, up = [torch.nn.functional.linear(decoded, tensors[n + ".weight"].float() * tensors[n + ".scale"]).bfloat16()
                 for n in ("gate_proj", "up_proj")]
-    hidden = torch.nn.functional.silu(gate) * up
+    hidden = (torch.nn.functional.silu(gate.float()) * up.float()).bfloat16()
     hq, hs = _fp8.quantize(hidden, weights.FP8, _fp8.Granularity.SLICE)
     expected = torch.nn.functional.linear(hq.float() * hs,
         tensors["down_proj.weight"].float() * tensors["down_proj.scale"]).bfloat16()

@@ -11,8 +11,9 @@ Start with FP8 E4M3 weights and dynamic per-token FP8 activations in the generat
 MLPs. This targets dense matrix multiplication in both denoising and clean-cache
 refresh. All 36 generator MLPs (108 projections) are eligible. Gate and up share
 one activation quantization; down quantizes its own input. Scaling is per output
-channel for weights and per row for activations. GEMM outputs and intervening
-SwiGLU math stay BF16; the existing GEMM uses its default full accumulation.
+channel for weights and per row for activations. GEMM outputs stay BF16. SwiGLU
+uses an explicit FP32 SiLU/product and rounds to BF16 before down-projection
+quantization; the existing GEMM uses its default full accumulation.
 Attention, action conditioning, understanding weights, norms, video readout and
 VAE retain their original precision. No steps, frames or cache entries are removed.
 
@@ -139,3 +140,12 @@ rejection, malformed scales, and the operand/scaling contract with an explicit C
 GEMM oracle. On a Mac without Triton, these run with only CUDA kernel imports
 replaced by fail-fast placeholders; CUDA operations are not validated there.
 The manual CUDA test and full model comparison remain required.
+
+The first H100 pilot (job 6481804) passed all 55 native CPU tests and executed
+FP8 GEMM, then stopped at the eager/compile parity check before weight export.
+For the one-row probe, 45/4096 elements exceeded the existing 0.03 absolute/relative
+tolerance (maximum absolute difference 0.0510). Generated Inductor source showed
+the intermediate BF16 SiLU cast was removed by fusion. The follow-up makes the
+activation's FP32 computation and final BF16 rounding explicit in both execution
+modes; the original test tolerance is unchanged. This diagnosis is not full-model
+or target-GPU validation.

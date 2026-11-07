@@ -39,7 +39,11 @@ class FP8SwiGLU(nn.Module):
         quantized, scale = quantize(x, FP8, Granularity.SLICE, axis=-1)
         gate = self.gate_proj(quantized, scale, out_dtype=x.dtype)
         up = self.up_proj(quantized, scale, out_dtype=x.dtype)
-        return self.down_proj(F.silu(gate) * up, Granularity.SLICE, out_dtype=x.dtype)
+        # Make rounding explicit: Inductor otherwise removes the intermediate
+        # BF16 SiLU rounding, moving values across the downstream FP8 bins.
+        # Both eager and compiled paths now round once, after the FP32 product.
+        hidden = (F.silu(gate.float()) * up.float()).to(x.dtype)
+        return self.down_proj(hidden, Granularity.SLICE, out_dtype=x.dtype)
 
 
 @torch.no_grad()
