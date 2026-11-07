@@ -1,8 +1,9 @@
 # Experimental FP8 generator MLPs for RTX PRO 6000 Blackwell
 
-Status: **Deferred pending full-model speed and visual-quality validation.**
-H100 kernel, compile and CUDA graph checks passed; RTX PRO 6000 is untested.
-Default: **off**. No model speedup or control-to-screen reduction is claimed yet.
+Status: **Not recommended for H100 speed; experimental memory-saving candidate.**
+Full-model H100 compilation and repeated generation passed, but this FP8 path
+was 2.4% slower than BF16 while saving 5.1 GiB of resident allocated memory.
+RTX PRO 6000 is untested. Default: **off**. No control-to-screen reduction is claimed.
 This branch adds a separate FP8 weight overlay and runtime path; it does not change
 any published checkpoint or the shared `flashdreams/` implementation.
 
@@ -94,14 +95,14 @@ TORCHINDUCTOR_CACHE_DIR="$PWD/artifacts/fp8-trial/cache-bf16" \
 python -m cosmos3_h_dreams.cache_refresh_probe \
   --checkpoint assets/c3-h-d_2-step_model_bf16.safetensors \
   --mode compiled --reuse-cache-rope --defer-cache-refresh \
-  --decoder taehv --seed 11 --frames 512 --save-video \
+  --decoder taehv --seed 11 --frames 512 --timed-chunks 128 --save-video \
   --output artifacts/fp8-trial/bf16
 
 TORCHINDUCTOR_CACHE_DIR="$PWD/artifacts/fp8-trial/cache-fp8" \
 python -m cosmos3_h_dreams.cache_refresh_probe \
   --checkpoint assets/c3-h-d_2-step_model_bf16.safetensors \
   --mode compiled --reuse-cache-rope --defer-cache-refresh \
-  --decoder taehv --seed 11 --frames 512 --save-video \
+  --decoder taehv --seed 11 --frames 512 --timed-chunks 128 --save-video \
   --fp8-weights artifacts/dreams-generator-mlp-fp8-v1 \
   --output artifacts/fp8-trial/fp8
 
@@ -111,7 +112,8 @@ python -m cosmos3_h_dreams.fp8_compare \
 ```
 
 Each report records source commit, checkpoint/input hashes, GPU UUID, software,
-settings, compiler-cache paths, startup, 8 warmup chunks, 32 measured chunks,
+settings, compiler-cache paths, startup, 8 warmup chunks, 128 measured chunks
+(the CLI default is 32),
 per-chunk readiness and host submission times, completed-work throughput including
 final cache drain, and memory. Videos are saved outside timing. A separate run
 with `--profile-stages` records synchronized stage diagnostics; the comparator
@@ -141,7 +143,7 @@ rejection, malformed scales, and the operand/scaling contract with an explicit C
 GEMM oracle. On a Mac without Triton, these run with only CUDA kernel imports
 replaced by fail-fast placeholders; CUDA operations are not validated there.
 The manual CUDA test passed on H100 after the precision correction below.
-The full-model comparison and RTX PRO 6000 checks remain required.
+The full-model H100 comparison is recorded below; RTX PRO 6000 checks remain required.
 
 The first H100 pilot (job 6481804) passed all 55 native CPU tests and executed
 FP8 GEMM, then stopped at the eager/compile parity check before weight export.
@@ -161,15 +163,89 @@ reuses the FP8 export and a copied BF16 compiler cache; startup times from that
 bounded comparison are not a matched cold-start benchmark.
 
 Job 6481852 verified and installed all 108 FP8 projections in the full model,
-then hit its 125-second worker timeout during compile warmup. No FP8 steady-state
-timing or quality videos were produced, so there is **no measured FP8 speedup,
-control-to-screen reduction, or quality-equivalence claim**. The partial compiler
-cache is retained for a later explicitly budgeted comparison. Avoid repeating the
-export/kernel work; allow warmup separately from measured generation. Original
-weights and default BF16 behavior remain the recommended path until validation.
+then hit its 125-second worker timeout during compile warmup. That attempt produced
+no FP8 steady-state timing or quality videos. Its partial compiler cache was
+preserved and reused in the completed comparison below. Original weights and
+default BF16 behavior remain the recommended path for speed.
 
 Pilot accounting: jobs 6481804/6481830/6481852 used 120/269/184 node-seconds,
-including the failed attempts. The cumulative pass used 2,637 of 2,700 approved
-node-seconds (43m57s of 45m). Each allocation reserved eight H100s; no RTX claim is
-implied by these checks. The real FP8 overlay is 5,439,968,064 bytes and represents
-10,871,635,968 bytes of BF16 MLP matrices; total runtime VRAM has not been compared.
+including the failed attempts. Before the completed comparison, cumulative usage
+was 2,637 node-seconds. The user then lifted the prior compute cap to finish
+compilation and repeated generation. Each allocation reserved eight H100s.
+The real FP8 overlay is 5,439,968,064 bytes and represents 10,871,635,968 bytes
+of BF16 MLP matrices.
+
+## Completed repeated H100 comparison — 2026-11-07
+
+Job **6481895**, source **dc565d362cdf04eb9f64acf826cd34efde0a93a8**, completed
+all four fresh processes in FP8/BF16/BF16/FP8 order on the same H100 80 GB.
+Each used eight warmup chunks followed by 128 measured chunks: 2,048 measured
+frames per precision. Both retained the latest cache optimizations, 832×480 output,
+eight frames/chunk, two denoising steps, TAEHV, and seed 11. PyTorch was
+2.11.0+cu130 with CUDA 13.0. This compares FP8 against the optimized BF16 runtime,
+not against the original release.
+
+| Metric | BF16 | Selective FP8 |
+| --- | ---: | ---: |
+| Complete generation per eight-frame chunk, mean | 117.21 ms | 120.06 ms |
+| Completed generation throughput | 68.25 fps | 66.64 fps |
+| Host RGB readiness, median / P95 | 69.17 / 70.00 ms | 71.60 / 72.36 ms |
+| GPU memory allocated after timing | 29.85 GiB | 24.75 GiB |
+| GPU memory reserved after timing | 31.45 GiB | 26.15 GiB |
+| Peak allocated memory over the process | 36.58 GiB | 33.88 GiB |
+
+The two BF16 process means were 116.94 and 117.49 ms/chunk; FP8 was 119.76
+and 120.35 ms/chunk. FP8 increased generation time by **2.42%** and reduced
+throughput by **2.37%**. Median frame readiness was **2.43 ms later**. Completed
+generation includes decode, host RGB preparation, cache refresh and final GPU
+drain. No browser, transport or display latency was measured. Peak memory includes
+startup and subsequent reset/quality checks; it is not the steady-state allocation.
+These are PyTorch allocator counters; CUDA context and other non-PyTorch memory
+are not included.
+
+All finite-output, reset, scene-return, pending-reset and raw-token checks passed.
+The two runs of each precision produced exactly identical 512-frame hash sequences.
+BF16 and FP8 are not pixel-identical: first-eight-frame moving-clip PSNR was
+34.09 dB; first-64-frame PSNR was 28.49 dB. These are descriptive differences,
+not evidence of quality equivalence. Saved quality clips contain 512 moving and
+64 held-control frames per run (51.2 and 6.4 seconds at the preset's 10 fps).
+This is one scene and one seed; broader quality and actual RTX testing are needed.
+Visual spot checks at moving frames 0/63/127/255/383/511 and held-control frames
+0/7/15/31/47/63 found recognizable scene structure in both variants, with tissue
+position and texture differences but no obvious additional FP8 blotchy collapse
+in those samples. This is not a full temporal-quality or control-response verdict.
+Both full moving and held-control pairs are saved for human side-by-side review.
+
+Persistent compiler caches were copied from prior attempts. Initialization took
+32.58/31.53 seconds for BF16 and 93.23/62.20 seconds for FP8, including load and
+initial compile work. These are not matched cold-start measurements. The job
+used 541 node-seconds, or 1.202 allocated H100-hours across the eight-GPU node.
+Measurements ran sequentially on GPU 0.
+
+## Why native FP8 did not improve H100 speed
+
+A separate diagnostic allocation, job **6481930**, completed both precisions on
+another H100 with the same source, settings and copied compiler caches. After
+warmup it recorded eight synchronized stage samples and four profiler chunks per
+precision. These instrumented samples explain the result; the repeated trial
+above remains the generation benchmark.
+
+The trace confirms actual FP8 matrix kernels, with no BF16 precision fallback.
+Summed dense GEMM kernel time was 44.69 ms/chunk for BF16 and 43.84 ms/chunk for
+FP8, a saving of only **0.85 ms**. The separate dynamic activation quantizer kernels
+added **3.12 ms/chunk**. The GEMM group includes unchanged projections, and GPU
+kernel-duration sums are not end-to-end wall time. Synchronized denoising medians
+were 48.53/50.49 ms for BF16/FP8; cache-refresh submission was 49.24/48.47 ms.
+
+This implementation's activation-conversion cost outweighs its measured matrix
+saving. Additional compile warmup will not remove that steady-state work. A next
+FP8 experiment should benchmark fused producer/quantizer kernels or a more
+efficient scaled GEMM implementation at the model's real shapes before repeating
+full rollouts. No runtime change is bundled with this diagnosis, and the same
+outcome or speedup should not be assumed on RTX PRO 6000 Blackwell.
+
+The diagnostic used 213 node-seconds (0.473 allocated H100-hours). Together with
+the repeated trial, this continuation consumed **754 node-seconds / 1.676 allocated
+H100-hours**. Including all earlier weight-quality and FP8 attempts, the ledger
+stands at 3,391 node-seconds / 7.536 allocated GPU-hours. Both jobs completed,
+and no GPU job remains active for this FP8 continuation.

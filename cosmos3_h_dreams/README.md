@@ -208,8 +208,10 @@ rather than accumulating an unbounded queue.
 ## Performance and diagnostics
 
 The experimental [FP8 generator-MLP trial](FP8_TRIAL.md) adds separate quantized
-weight artifacts for RTX PRO 6000 Blackwell experiments. It is default-off and
-awaits GPU speed and quality validation; existing presets retain BF16 weights.
+weight artifacts for RTX PRO 6000 Blackwell experiments. Repeated H100 testing
+saved 5.1 GiB of allocated GPU memory but increased generation time by 2.4%.
+It remains default-off; existing presets retain BF16 weights. RTX PRO 6000 and
+broader visual-quality validation are still required.
 
 Append `--profile` to record stage timings, or `--print-actions` to the headset
 command to log normalized action rows and sampled controller poses. Action rows
