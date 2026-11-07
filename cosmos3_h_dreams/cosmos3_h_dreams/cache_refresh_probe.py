@@ -57,11 +57,15 @@ def main() -> None:
     parser.add_argument("--save-video", action="store_true", help="Save long motion and 64-frame held-control videos outside timing.")
     parser.add_argument("--profile-stages", action="store_true", help="Separate diagnostic run: synchronization changes throughput timings.")
     parser.add_argument("--frames", type=int, default=512)
+    parser.add_argument("--timed-chunks", type=int, default=32,
+                        help="Repeated eight-frame chunks measured after warmup.")
     parser.add_argument("--reference-quality", type=Path,
                         help="Optional same-mode JSON containing frame_sha256.")
     args = parser.parse_args()
     if args.frames < 320 or args.frames % 8:
         parser.error("--frames must be a multiple of eight and at least 320")
+    if args.timed_chunks < 1:
+        parser.error("--timed-chunks must be positive")
     if not torch.cuda.is_available():
         parser.error("This manual probe requires CUDA")
     args.output.mkdir(parents=True, exist_ok=False)
@@ -69,7 +73,8 @@ def main() -> None:
     trajectory_path = args.actions
     trajectory = np.load(trajectory_path, allow_pickle=False)
     indices = np.resize(np.r_[np.arange(len(trajectory)),
-                             np.arange(len(trajectory) - 2, 0, -1)], args.frames)
+                             np.arange(len(trajectory) - 2, 0, -1)],
+                        max(args.frames, (8 + args.timed_chunks) * 8))
     np.save(args.output / "actions.npy", trajectory[indices])
     np.save(args.output / "static-actions.npy", np.repeat(trajectory[:1], 64, axis=0))
     config = Cosmos3HDreamsConfig(**{
@@ -99,7 +104,7 @@ def main() -> None:
         trajectory_sha256=hashlib.sha256(trajectory_path.read_bytes()).hexdigest(),
         initial_frame_sha256=hashlib.sha256(args.initial_frame.read_bytes()).hexdigest(),
         checkpoint_sha256=file_sha256(Path(args.checkpoint)),
-        warmup_chunks=8, timed_chunks=32, metric="generation_to_prepared_host_uint8_rgb",
+        warmup_chunks=8, timed_chunks=args.timed_chunks, metric="generation_to_prepared_host_uint8_rgb",
         note="Readiness excludes deferred refresh. Complete throughput includes it and the final GPU drain. Neither is screen latency.",
     )
 
@@ -148,7 +153,7 @@ def main() -> None:
         stage_records = []
         host_submit_ms = []
         complete_started = time.perf_counter()
-        for _ in range(32):
+        for _ in range(args.timed_chunks):
             started = time.perf_counter()
             result, _ = step()
             wall_ms.append((time.perf_counter() - started) * 1000)
@@ -159,7 +164,7 @@ def main() -> None:
                 stage_records.append(dict(result.metrics))
         rollout.wait_for_pending_cache_update(block=True)
         torch.cuda.synchronize()
-        report["complete_ms_per_chunk"] = (time.perf_counter() - complete_started) * 1000 / 32
+        report["complete_ms_per_chunk"] = (time.perf_counter() - complete_started) * 1000 / args.timed_chunks
         report["complete_fps"] = 8000 / report["complete_ms_per_chunk"]
         report["host_submit_ms"] = host_submit_ms
         report["stage_records"] = stage_records
@@ -169,6 +174,11 @@ def main() -> None:
         report["generation_ms"] = {f"p{p}": float(np.percentile(wall_ms, p))
                                    for p in (50, 90, 95)}
         report["frame_readiness_ms"] = report["generation_ms"]
+        (args.output / "timing.json").write_text(json.dumps(report, default=str, indent=2))
+        print(json.dumps({"phase": "timed", "precision": "fp8" if args.fp8_weights else "bf16",
+                          "complete_ms_per_chunk": report["complete_ms_per_chunk"],
+                          "complete_fps": report["complete_fps"],
+                          "frame_readiness_ms": report["frame_readiness_ms"]}), flush=True)
         session.reset()
         before_calls = compiled_calls
         frame_hashes = []
