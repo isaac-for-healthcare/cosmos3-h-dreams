@@ -163,6 +163,14 @@ class Cosmos3HDreamsApplication(IFlashDreamsApplication):
             "--compile-denoise", action=argparse.BooleanOptionalAction, default=False
         )
         parser.add_argument(
+            "--fp8-weights", type=Path, default=None,
+            help="Experimental generator-MLP FP8 overlay directory. Default off; see FP8_TRIAL.md.",
+        )
+        parser.add_argument(
+            "--no-fp8-weights", dest="fp8_weights", action="store_const", const=None,
+            default=argparse.SUPPRESS, help="Use original BF16 weights, overriding session YAML.",
+        )
+        parser.add_argument(
             "--compile-denoise-mode",
             choices=COMPILE_DENOISE_MODES,
             default="max-autotune-no-cudagraphs",

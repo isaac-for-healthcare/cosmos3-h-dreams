@@ -23,6 +23,7 @@ def test_cache_compile_is_off_in_every_preset(tmp_path):
         assert not config.compile_cache_refresh
         assert not config.reuse_cache_rope
         assert not config.defer_cache_refresh
+        assert config.fp8_weights is None
 
 
 @pytest.mark.parametrize("overrides, message", [

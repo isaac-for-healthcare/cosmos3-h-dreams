@@ -78,6 +78,19 @@ def test_experimental_cache_compile_yaml_and_cli_override(tmp_path, monkeypatch)
         assert all(c.defer_cache_refresh is enabled for c in application.scenes.values())
 
 
+def test_fp8_yaml_cli_override_and_cpu_rejection(tmp_path, monkeypatch):
+    path, data = _session_file(tmp_path)
+    monkeypatch.setattr(session_config_module, "REPO_ROOT", tmp_path)
+    data["runtime"].update(device="cuda:0", fp8_weights="artifacts/fp8")
+    path.write_text(yaml.safe_dump(data))
+    for flags, expected in [([], tmp_path / "artifacts/fp8"), (["--no-fp8-weights"], None)]:
+        application = Cosmos3HDreamsApplication()
+        application.init(["--session-config", str(path), "--headset", *flags])
+        assert all(c.fp8_weights == expected for c in application.scenes.values())
+    with pytest.raises(ValueError, match="requires a CUDA device"):
+        replace(next(iter(application.scenes.values())), device="cpu", fp8_weights=tmp_path / "fp8")
+
+
 @pytest.mark.parametrize(
     "change, match",
     [

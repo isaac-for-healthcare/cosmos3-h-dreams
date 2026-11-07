@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -76,6 +77,7 @@ class HandModel:
         defer_cache_refresh: Defer FadeMem refresh until pixels are prepared.
         reuse_cache_rope: Reuse positional factors across FadeMem layers.
         compile_cache_refresh: Experimental compiled saturated FadeMem refresh.
+        fp8_weights: Experimental, separate generator-MLP FP8 overlay directory.
         compile_denoise: ``torch.compile`` the velocity call.
         compile_denoise_mode: torch.compile mode for that call.
         fixed_shape_cache_fill: Use static masked history while the cache fills.
@@ -113,6 +115,7 @@ class HandModel:
         defer_cache_refresh: bool = False,
         reuse_cache_rope: bool = False,
         compile_cache_refresh: bool = False,
+        fp8_weights: str | Path | None = None,
         compile_denoise: bool = False,
         compile_denoise_mode: str = "max-autotune-no-cudagraphs",
         fixed_shape_cache_fill: bool = False,
@@ -193,11 +196,22 @@ class HandModel:
         source = ensure_checkpoint(
             resolve_checkpoint_source(checkpoint), credential_path=credential_path
         )
+        self.quantization_info = None
+        if fp8_weights is not None:
+            from cosmos3_h_dreams._runtime._fp8 import install_overlay, preflight
+            from cosmos3_h_dreams.fp8_weights import verify_overlay
+
+            fp8_weights = Path(fp8_weights)
+            preflight(device)
+            fp8_manifest = verify_overlay(Path(source), fp8_weights)
         self.net = load_exported_checkpoint(
             source,
             device=device,
             credential_path=resolve_credential_path(credential_path),
         ).eval()
+        if fp8_weights is not None:
+            self.quantization_info = install_overlay(self.net, fp8_weights, fp8_manifest)
+            print(f"[cosmos3-h-dreams] Experimental FP8 enabled: {self.quantization_info}", flush=True)
         if not getattr(self.net.config, "action_gen", False):
             raise SystemExit(
                 "checkpoint has no action pathway; the hand demo needs the AgiBot "

@@ -126,6 +126,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
             defer_cache_refresh=self.config.defer_cache_refresh,
             reuse_cache_rope=self.config.reuse_cache_rope,
             compile_cache_refresh=self.config.compile_cache_refresh,
+            fp8_weights=self.config.fp8_weights,
             compile_denoise=self.config.compile_denoise,
             compile_denoise_mode=self.config.compile_denoise_mode,
             cuda_graph_denoise=self.config.cuda_graph_denoise,
@@ -525,6 +526,7 @@ class Cosmos3HDreamsSession(IFlashDreamsApplicationSession):
             f"deferred cache refresh: {self.config.defer_cache_refresh} | "
             f"cache positional reuse: {self.config.reuse_cache_rope} | "
             f"experimental cache compile: {self.config.compile_cache_refresh} | "
+            f"generator MLP precision: {'FP8 (experimental)' if self.config.fp8_weights else 'BF16'} | "
             f"compile: {self.config.compile_denoise} "
             f"({self.config.compile_denoise_mode}) | "
             f"CUDA graph: {self.config.cuda_graph_denoise}"

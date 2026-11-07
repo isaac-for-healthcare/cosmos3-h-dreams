@@ -214,6 +214,9 @@ class Cosmos3HDreamsConfig:
     reuse_cache_rope: bool = False
     """Experimental: reuse positional factors across FadeMem layers."""
 
+    fp8_weights: Path | None = None
+    """Experimental generator-MLP FP8 overlay directory. None keeps BF16."""
+
     compile_cache_refresh: bool = False
     """Experimental: compile full FadeMem refresh layers; may change numerics."""
 
@@ -297,6 +300,8 @@ class Cosmos3HDreamsConfig:
             compile_denoise=self.compile_denoise,
             device=self.device,
         )
+        if self.fp8_weights is not None and not self.device.startswith("cuda"):
+            raise ValueError("fp8_weights requires a CUDA device")
         if self.compile_denoise_mode not in COMPILE_DENOISE_MODES:
             raise ValueError(
                 f"unknown compile denoise mode {self.compile_denoise_mode!r}"
