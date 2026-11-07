@@ -1,6 +1,7 @@
 # Experimental FP8 generator MLPs for RTX PRO 6000 Blackwell
 
-Status: **Deferred pending CUDA, target-GPU speed and visual-quality validation.**
+Status: **Deferred pending full-model speed and visual-quality validation.**
+H100 kernel, compile and CUDA graph checks passed; RTX PRO 6000 is untested.
 Default: **off**. No model speedup or control-to-screen reduction is claimed yet.
 This branch adds a separate FP8 weight overlay and runtime path; it does not change
 any published checkpoint or the shared `flashdreams/` implementation.
@@ -139,7 +140,8 @@ selection of only generator MLPs, zero-row scaling, wrong-source and corrupt-sha
 rejection, malformed scales, and the operand/scaling contract with an explicit CPU
 GEMM oracle. On a Mac without Triton, these run with only CUDA kernel imports
 replaced by fail-fast placeholders; CUDA operations are not validated there.
-The manual CUDA test and full model comparison remain required.
+The manual CUDA test passed on H100 after the precision correction below.
+The full-model comparison and RTX PRO 6000 checks remain required.
 
 The first H100 pilot (job 6481804) passed all 55 native CPU tests and executed
 FP8 GEMM, then stopped at the eager/compile parity check before weight export.
@@ -157,3 +159,17 @@ the container lacks optional `mediapy`; the probe now uses its existing FFmpeg.
 These failed allocations remain included in the compute ledger. The follow-up
 reuses the FP8 export and a copied BF16 compiler cache; startup times from that
 bounded comparison are not a matched cold-start benchmark.
+
+Job 6481852 verified and installed all 108 FP8 projections in the full model,
+then hit its 125-second worker timeout during compile warmup. No FP8 steady-state
+timing or quality videos were produced, so there is **no measured FP8 speedup,
+control-to-screen reduction, or quality-equivalence claim**. The partial compiler
+cache is retained for a later explicitly budgeted comparison. Avoid repeating the
+export/kernel work; allow warmup separately from measured generation. Original
+weights and default BF16 behavior remain the recommended path until validation.
+
+Pilot accounting: jobs 6481804/6481830/6481852 used 120/269/184 node-seconds,
+including the failed attempts. The cumulative pass used 2,637 of 2,700 approved
+node-seconds (43m57s of 45m). Each allocation reserved eight H100s; no RTX claim is
+implied by these checks. The real FP8 overlay is 5,439,968,064 bytes and represents
+10,871,635,968 bytes of BF16 MLP matrices; total runtime VRAM has not been compared.
