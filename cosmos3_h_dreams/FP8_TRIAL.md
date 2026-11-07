@@ -149,3 +149,11 @@ the intermediate BF16 SiLU cast was removed by fusion. The follow-up makes the
 activation's FP32 computation and final BF16 rounding explicit in both execution
 modes; the original test tolerance is unchanged. This diagnosis is not full-model
 or target-GPU validation.
+
+The corrected H100 kernel check (job 6481830) was bit-exact between eager and
+compile at all four probe sizes, with exact CUDA graph replay. It exported all
+36 FP8 shards. Full-model BF16 generation ran, but video export stopped because
+the container lacks optional `mediapy`; the probe now uses its existing FFmpeg.
+These failed allocations remain included in the compute ledger. The follow-up
+reuses the FP8 export and a copied BF16 compiler cache; startup times from that
+bounded comparison are not a matched cold-start benchmark.

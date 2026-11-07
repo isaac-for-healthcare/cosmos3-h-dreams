@@ -31,6 +31,17 @@ from flashdreams.demo import CanonicalInputWindow
 from flashdreams.infra.time import TimeWindow
 
 
+def _write_video(path: Path, frames: list[np.ndarray], *, fps: float) -> None:
+    """Use the runtime's existing FFmpeg, without optional Python media packages."""
+    height, width, _ = frames[0].shape
+    subprocess.run([
+        "ffmpeg", "-v", "error", "-n", "-f", "rawvideo", "-pix_fmt", "rgb24",
+        "-s", f"{width}x{height}", "-r", str(fps), "-i", "pipe:0", "-an",
+        "-c:v", "libx264", "-threads", "2", "-preset", "veryfast", "-crf", "18",
+        "-pix_fmt", "yuv420p", str(path),
+    ], input=np.stack(frames).tobytes(), check=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
@@ -170,10 +181,8 @@ def main() -> None:
             if args.save_video:
                 quality_frames.extend(frame.copy() for frame in frames)
         if args.save_video:
-            import mediapy as media
-
-            media.write_video(str(args.output / "motion.mp4"), quality_frames, fps=config.fps)
             np.save(args.output / "motion-first64.npy", np.stack(quality_frames[:64]))
+            _write_video(args.output / "motion.mp4", quality_frames, fps=config.fps)
             del quality_frames
         report.update(frame_sha256=frame_hashes, frames=len(frame_hashes), all_finite=True,
                       quality_compiled_layer_calls=compiled_calls - before_calls)
@@ -193,8 +202,8 @@ def main() -> None:
             if args.save_video:
                 static_frames.extend(frame.copy() for frame in frames)
         if args.save_video:
-            media.write_video(str(args.output / "held-controls.mp4"), static_frames, fps=config.fps)
             np.save(args.output / "held-controls.npy", np.stack(static_frames))
+            _write_video(args.output / "held-controls.mp4", static_frames, fps=config.fps)
         session.switch_scene(config)
         _, frames = step()
         report["scene_return_exact"] = hashes(frames) == frame_hashes[:8]
