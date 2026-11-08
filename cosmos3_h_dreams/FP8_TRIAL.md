@@ -1,9 +1,10 @@
 # Experimental FP8 generator MLPs for RTX PRO 6000 Blackwell
 
-Status: **Not recommended for H100 speed; experimental memory-saving candidate.**
-Full-model H100 compilation and repeated generation passed, but this FP8 path
-was 2.4% slower than BF16 while saving 5.1 GiB of resident allocated memory.
-RTX PRO 6000 is untested. Default: **off**. No control-to-screen reduction is claimed.
+Status: **Experimental opt-in; faster on the tested RTX PRO 6000D, slower on H100.**
+Repeated full-generation comparisons found 17.9% lower chunk time on RTX PRO
+6000D and 2.4% higher chunk time on H100. Both saved about 5.1 GiB of resident
+allocated memory. The standard RTX PRO 6000 remains untested, and broader visual
+quality acceptance remains open. Default: **off**. No control-to-screen reduction is claimed.
 This branch adds a separate FP8 weight overlay and runtime path; it does not change
 any published checkpoint or the shared `flashdreams/` implementation.
 
@@ -249,3 +250,100 @@ the repeated trial, this continuation consumed **754 node-seconds / 1.676 alloca
 H100-hours**. Including all earlier weight-quality and FP8 attempts, the ledger
 stands at 3,391 node-seconds / 7.536 allocated GPU-hours. Both jobs completed,
 and no GPU job remains active for this FP8 continuation.
+
+## Repeated RTX PRO 6000D comparison — 2026-11-07
+
+The Colossus baseline used source **7e6801c32d1be84c8b5ce3b485df1b6c7e2052cf**
+(runtime unchanged from the H100 comparison) and an **RTX PRO 6000D Blackwell
+Workstation Edition**, compute capability 12.0, 73,415 MiB reported GPU memory,
+600 W power limit, driver 615.71.09. This is not the standard RTX PRO 6000.
+The isolated environment used Python 3.12.16, PyTorch 2.11.0+cu130, CUDA 13.0,
+cuDNN 91900 and Triton 3.6.0. All 36 FP8 shard hashes matched the Eos export.
+
+Run `baseline-357e9b65` completed FP8/BF16/BF16/FP8 fresh processes. Each used
+eight warmup and 128 measured chunks, for 2,048 measured frames per precision.
+Settings matched the H100 trial: seed 11, 832×480, eight-frame chunks, two steps,
+TAEHV and retained cache optimizations. The comparison is against the optimized
+BF16 runtime, not the original release.
+
+| Metric | BF16 | Selective FP8 |
+| --- | ---: | ---: |
+| Complete generation per eight-frame chunk, mean | 230.74 ms | 189.44 ms |
+| Completed generation throughput | 34.67 fps | 42.23 fps |
+| Host RGB readiness, median / P95 | 143.82 / 144.49 ms | 116.86 / 117.90 ms |
+| GPU memory allocated after timing | 29.78 GiB | 24.68 GiB |
+| GPU memory reserved after timing | 31.44 GiB | 26.07 GiB |
+| Peak allocated memory over the process | 36.48 GiB | 33.85 GiB |
+
+FP8 reduced complete generation time by **17.90%** (41.30 ms/chunk), increased
+throughput by **21.80%**, and brought median host RGB readiness forward by
+**26.96 ms**. BF16 process means were 230.63/230.85 ms; FP8 means were
+189.82/189.06 ms. Complete generation includes deferred cache completion;
+readiness measures prepared host RGB, not delivery or display. No control-to-screen
+measurement was made. Memory values are PyTorch allocator counters.
+
+All finite-output, reset, scene-return, pending-reset and raw-token checks passed.
+Each precision's repeated 512-frame moving rollouts had identical frame hashes.
+Each process also saved 64 held-control frames. Across precisions, first-eight/
+first-64 moving-frame PSNR was 33.63/26.12 dB; held-control PSNR was 30.94/23.45 dB.
+These describe numerical differences and do not establish visual equivalence.
+Quality coverage remains one scene and one seed.
+Visual spot checks at moving frames 0/63/127/255/383/511 found recognizable scene
+structure in both variants, with differences in instrument position and tissue
+texture, without obvious additional FP8 blotchy collapse in those samples.
+This sampled inspection does not establish temporal quality or control-response
+equivalence. Full-resolution source videos remain saved on Colossus; a downscaled
+side-by-side preview contains all 512 frames at 30 fps playback.
+
+Each precision's first process started with a fresh RTX compiler cache, and its
+repeat reused that cache. BF16 initialization took 55.05/17.42 seconds; FP8 took
+98.38/40.70 seconds. These are observed initialization times, not a controlled
+cold-start comparison. No H100 compiler cache was reused. A prior attempt stopped
+before generation because the tokenizer was missing from the offline cache; it
+contributed no timing samples. The tokenizer was then cached and offline loading
+verified before the completed run.
+
+## RTX activation/quantization fusion prototype — rejected for integration
+
+A standalone Triton experiment combined the FP32 SiLU/product, BF16 rounding,
+rowwise scale reduction and down-projection FP8 conversion. Product source and
+the shared framework were unchanged. Eight-warps GPU graph microbenchmarks gave
+21.82 → 15.78 microseconds at the actual `[788, 12288]` activation shape
+(1.38× kernel speedup). Checks at rows 1/580/788/1160/1848 and several input
+magnitudes initially matched the compiled reference's FP8 bytes and scales exactly.
+That isolated result was not sufficient for the model.
+
+The full-model pair (`fusion-rollout-01`, 256 timed chunks after eight warmup)
+measured **189.473 ms/chunk** for existing FP8 and **189.484 ms/chunk** for the
+fused candidate. It stopped at the exact-reference assertion: moving frames
+0–47 matched, but frame 48 onward differed. Internal reset/scene/pending checks
+passed. This candidate offers no measured full-generation gain and is rejected.
+
+An eager diagnostic captured an actual gate/up tensor with one different FP8
+byte among 9,682,944 elements, with identical scales. The fused kernel matched
+the compiled reference exactly; the eager reference differed at gate
+`0.0004444122314453125`, up `0.2451171875` (FP8 bytes 11 versus 12 in the
+captured row's scale). This exposes a rounding boundary missed by the random
+checks. It does not invalidate the earlier, explicitly limited parity checks or
+establish that eager and compiled execution are identical for every input.
+
+A second prototype preserved the original eager forward and used fusion only
+inside `torch.compile`. It measured 188.763 ms/chunk (an unrepeated 0.37%
+reduction versus the preceding reference), but still first differed at frame 48,
+where saturated compiled cache refresh becomes relevant. The captured rounding
+boundary therefore does not fully explain the integrated mismatch. Further
+compiler/cache-path diagnosis would be needed before integration. This variant
+is also rejected; no tolerance was relaxed, no runtime flag/default was added,
+and no fusion saving is included in the FP8 headline result.
+
+Kernel Factory 1.1.17 and its bundled skills 0.1.77 were installed and checked.
+No campaign was launched. Given the small local kernel budget and failed integrated
+parity, this operation is not yet a useful campaign target. Service use requires
+user sign-in and a confirmed concrete operation/workload/budget contract. A future
+campaign should follow target-GPU profiling of a larger contributor, use the
+existing optimized implementation as its baseline, and retain full-model checks.
+
+The bounded Colossus baseline and fusion/diagnostic scripts consumed 1,075 seconds
+of single-GPU run wall time (17.92 minutes), including failed attempts. This excludes
+earlier host/environment/asset preparation and is not workstation rental time or
+active CUDA execution time. All those scripts finished; no experiment remains active.
