@@ -190,6 +190,14 @@ ty                     MIT          https://github.com/astral-sh/ty
 setuptools             MIT          https://github.com/pypa/setuptools
 wheel                  MIT          https://github.com/pypa/wheel
 
+Optional NVFP4 browser benchmark tooling (installed separately; not bundled or
+required by inference):
+
+playwright             Apache-2.0   https://github.com/microsoft/playwright-python
+
+Playwright downloads a Chromium build separately. Its third-party notices and
+browser distribution terms apply to that download; no browser binary ships here.
+
 ================================================================================
 Additional locked packages
 ================================================================================

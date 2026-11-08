@@ -78,6 +78,7 @@ markers = [
 ]
 
 [dependency-groups]
+benchmark-browser = ["playwright==1.64.1"]
 # Test-specific dependencies shared across workspace members. Listed here so
 # that the type checker (ty) can resolve imports in test files and in
 # flashdreams/_pytest_plugins.

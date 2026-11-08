@@ -1,0 +1,51 @@
+<!doctype html><meta charset="utf-8"><title>RTX control-to-browser comparison</title>
+<style>body{background:#111;color:#eee;font:16px sans-serif}img{width:832px;height:480px}canvas{display:none}</style>
+<h1>RTX control-to-browser comparison</h1><p id="status">Starting</p><img id="video"><canvas id="trace" width="448" height="8"></canvas>
+<script>
+const bench=window.bench={sent:[],observed:[],raf:[],errors:[],visibility:[],readCost:[],pingMs:[],done:false};
+const img=document.getElementById('video'),ctx=document.getElementById('trace').getContext('2d',{willReadFrequently:true});
+const duration=Number(new URLSearchParams(location.search).get('seconds')||45);
+const controlTimes=[0, 1.000524, 1.743841, 2.378108, 3.048383, 3.841457, 4.631837, 5.480352, 6.211516, 7.148347, 8.011122, 8.590768, 9.297136, 10.144835, 11.050418, 12.007198, 12.660804, 13.36771, 14.22634, 15.187602, 15.918778, 16.717256, 17.341434, 18.056705, 18.897038, 19.883255, 20.498604, 21.395574, 22.114612, 22.972023, 23.738888, 24.595495, 25.51842, 26.265542, 27.135355, 27.69991, 28.495319, 29.207811, 29.982046, 30.897271, 31.729738, 32.636025, 33.335038, 33.993991, 34.957101, 35.556615, 36.08846, 37.077631, 37.793934, 38.370808, 39.275234, 40.109053, 40.656599, 41.185944, 42.067777, 42.858729, 43.770928, 44.740887, 45.671215, 46.434724, 47.428118, 48.208598, 48.912797, 49.660764, 50.616938, 51.423773, 52.212784, 53.213555, 54.065321, 54.988294, 55.970064, 56.720275, 57.280768, 57.89902, 58.55552, 59.238698, 59.988445, 60.656198, 61.281735, 62.188341, 63.026575, 63.895034, 64.779486, 65.41637, 66.149321, 66.993392, 67.862905, 68.42555, 68.963793, 69.784683, 70.426273, 71.110119, 71.735773, 72.480932, 73.357344, 74.35961];
+const times=duration<=4?[0,1,2,3]:controlTimes;
+const schedule=[['d','arrowright'],[],['a','arrowleft'],[],['w','arrowup'],[],['s','arrowdown'],[],['z','x'],[]];
+let seq=0,lastId=0,ws,t0,lastRaf,stopped=false,keys=[],heartbeat;
+document.addEventListener('visibilitychange',()=>bench.visibility.push({ms:performance.now(),state:document.visibilityState}));
+bench.visibility.push({ms:performance.now(),state:document.visibilityState});
+function observe(){
+ if(stopped)return;
+ const now=performance.now();if(lastRaf!==undefined)bench.raf.push(now-lastRaf);lastRaf=now;
+ if(img.naturalWidth){
+  const start=performance.now();
+  try{
+   ctx.drawImage(img,0,0,448,8,0,0,448,8);const pixels=ctx.getImageData(0,0,448,8).data;
+   function bits(offset,count){let v=0;for(let i=0;i<count;i++){const p=(4*448+(offset+i)*8+4)*4;v=v*2+(pixels[p]>127?1:0)}return v}
+   const magic=bits(0,8),id=bits(8,24),inv=bits(32,24);
+   if(magic===165&&inv===(id^0xffffff)&&id!==lastId){bench.observed.push({id,ms:performance.now()});lastId=id}
+  }catch(e){bench.errors.push(String(e))}
+  bench.readCost.push(performance.now()-start);
+ }
+ requestAnimationFrame(observe);
+}
+function send(){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'keys',keys,seq}))}
+function change(i){
+ if(i>=times.length){
+  keys=[];seq++;send();clearInterval(heartbeat);
+  setTimeout(()=>{stopped=true;ws.close();bench.finishedMs=performance.now();bench.done=true;document.getElementById('status').textContent='Complete'},1500);return;
+ }
+ keys=schedule[i%schedule.length];seq++;
+ const ms=performance.now();bench.sent.push({seq,ms,tick:times[i],event_index:i,t:(ms-t0)/1000,keys});send();
+ setTimeout(()=>change(i+1),Math.max(0,t0+(times[i+1]??duration)*1000-performance.now()));
+}
+async function start(){
+ for(let i=0;i<8;i++){const t=performance.now();await(await fetch('/healthz',{cache:'no-store'})).json();bench.pingMs.push(performance.now()-t)}
+ img.src='/video';requestAnimationFrame(observe);
+ ws=new WebSocket(location.origin.replace('http:','ws:')+'/benchmark-control');
+ ws.onmessage=e=>bench.errors.push(e.data);ws.onerror=()=>bench.errors.push('websocket error');
+ ws.onopen=async()=>{
+  heartbeat=setInterval(send,100);send();
+  while(!bench.observed.length)await new Promise(r=>setTimeout(r,20));
+  t0=performance.now();bench.startedMs=t0;document.getElementById('status').textContent='Measuring';change(0);
+ };
+}
+start();
+</script>

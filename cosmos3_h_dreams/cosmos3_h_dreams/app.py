@@ -171,6 +171,14 @@ class Cosmos3HDreamsApplication(IFlashDreamsApplication):
             default=argparse.SUPPRESS, help="Use original BF16 weights, overriding session YAML.",
         )
         parser.add_argument(
+            "--nvfp4-weights", type=Path, default=None,
+            help="Experimental SM120 NVFP4 overlay directory. Default off; see NVFP4_TRIAL.md.",
+        )
+        parser.add_argument(
+            "--no-nvfp4-weights", dest="nvfp4_weights", action="store_const", const=None,
+            default=argparse.SUPPRESS, help="Disable NVFP4, overriding session YAML.",
+        )
+        parser.add_argument(
             "--compile-denoise-mode",
             choices=COMPILE_DENOISE_MODES,
             default="max-autotune-no-cudagraphs",

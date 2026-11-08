@@ -210,8 +210,14 @@ rather than accumulating an unbounded queue.
 The experimental [FP8 generator-MLP trial](FP8_TRIAL.md) adds separate quantized
 weight artifacts for RTX PRO 6000 Blackwell experiments. Repeated H100 testing
 saved 5.1 GiB of allocated GPU memory but increased generation time by 2.4%.
-It remains default-off; existing presets retain BF16 weights. RTX PRO 6000 and
-broader visual-quality validation are still required.
+It remains default-off; existing presets retain BF16 weights. The subsequent
+[NVFP4 trial](NVFP4_TRIAL.md) measures a further 18.1% reduction in generation time
+versus FP8 on RTX PRO 6000D, with separate weights and larger numerical quality
+differences. Standard RTX PRO 6000 and broader visual-quality validation remain
+required; both quantization paths are experimental.
+The [NVFP4 experiment guide](experiments/nvfp4/README.md) provides separate-weight
+export, refresh-attention generation checks and matched 30/45 FPS browser trials.
+The attention and presentation experiments do not change application defaults.
 
 Append `--profile` to record stage timings, or `--print-actions` to the headset
 command to log normalized action rows and sampled controller poses. Action rows

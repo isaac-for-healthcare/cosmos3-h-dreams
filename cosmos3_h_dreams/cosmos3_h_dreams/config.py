@@ -217,6 +217,9 @@ class Cosmos3HDreamsConfig:
     fp8_weights: Path | None = None
     """Experimental generator-MLP FP8 overlay directory. None keeps BF16."""
 
+    nvfp4_weights: Path | None = None
+    """Experimental SM120 NVFP4 generator MLPs; mutually exclusive with FP8."""
+
     compile_cache_refresh: bool = False
     """Experimental: compile full FadeMem refresh layers; may change numerics."""
 
@@ -302,6 +305,10 @@ class Cosmos3HDreamsConfig:
         )
         if self.fp8_weights is not None and not self.device.startswith("cuda"):
             raise ValueError("fp8_weights requires a CUDA device")
+        if self.nvfp4_weights is not None and not self.device.startswith("cuda"):
+            raise ValueError("nvfp4_weights requires a CUDA device")
+        if self.fp8_weights is not None and self.nvfp4_weights is not None:
+            raise ValueError("Choose only one of fp8_weights and nvfp4_weights")
         if self.compile_denoise_mode not in COMPILE_DENOISE_MODES:
             raise ValueError(
                 f"unknown compile denoise mode {self.compile_denoise_mode!r}"

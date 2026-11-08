@@ -1,12 +1,20 @@
 # Experimental FP8 generator MLPs for RTX PRO 6000 Blackwell
 
 Status: **Experimental opt-in; faster on the tested RTX PRO 6000D, slower on H100.**
-Repeated full-generation comparisons found 17.9% lower chunk time on RTX PRO
-6000D and 2.4% higher chunk time on H100. Both saved about 5.1 GiB of resident
+Repeated full-generation comparisons found about 18.0% lower chunk time versus
+optimized BF16 on RTX PRO 6000D, and 2.4% higher chunk time on H100. A direct
+6000D comparison against published upstream main found 29.55% lower chunk time
+for optimized FP8. Both saved about 5.1 GiB of resident
 allocated memory. The standard RTX PRO 6000 remains untested, and broader visual
-quality acceptance remains open. Default: **off**. No control-to-screen reduction is claimed.
+quality acceptance remains open. Default: **off**. A separate
+[6000D software control-to-browser comparison](#rtx-pro-6000d-control-to-browser-comparison--2026-11-07)
+measures the interactive path. Physical control-to-screen latency remains unmeasured.
 This branch adds a separate FP8 weight overlay and runtime path; it does not change
 any published checkpoint or the shared `flashdreams/` implementation.
+
+The separate [NVFP4 follow-up](NVFP4_TRIAL.md) records the next experimental
+precision option, including matched FP8 generation and browser-latency comparisons.
+It does not change the FP8 default or replace its weight artifacts.
 
 ## Decision
 
@@ -347,3 +355,273 @@ The bounded Colossus baseline and fusion/diagnostic scripts consumed 1,075 secon
 of single-GPU run wall time (17.92 minutes), including failed attempts. This excludes
 earlier host/environment/asset preparation and is not workstation rental time or
 active CUDA execution time. All those scripts finished; no experiment remains active.
+
+## Matched published-main / optimized BF16 / FP8 comparison — 2026-11-07
+
+Run `production-matrix-fixedcache-01` directly compared published upstream main
+`fb18792d8af680a713801dea7688919e46329810` with optimized source
+`7e6801c32d1be84c8b5ce3b485df1b6c7e2052cf`, with and without the separate FP8
+overlay. Upstream main was rechecked before the run. The published checkpoint and
+production execution use **BF16**, not IEEE FP16; no separate FP16 result is claimed.
+
+The GPU was the same RTX PRO **6000D** Blackwell Workstation Edition, with the
+same Python/PyTorch/CUDA/driver stack as above. Six fresh processes ran in
+production / optimized / FP8 / FP8 / optimized / production order. Each used
+eight warmup chunks, 128 measured chunks, seed 11, 832×480, eight frames/chunk,
+two denoising steps and TAEHV. There were 2,048 measured frames per variant.
+Native host RGB conversion was used in production and native optimized GPU RGB
+conversion in the optimized variants. All deferred work was drained before
+stopping the complete-generation timer.
+
+| Metric | Published main BF16 | Optimized BF16 | Optimized FP8 |
+| --- | ---: | ---: | ---: |
+| Complete server generation, ms/eight-frame chunk | 268.51 | 230.79 | 189.17 |
+| Complete generation throughput, fps | 29.79 | 34.66 | 42.29 |
+| Host RGB readiness, median / P95, ms | 267.65 / 268.91 | 143.79 / 144.59 | 116.80 / 117.68 |
+| Resident allocated GPU memory, GiB | 29.78 | 29.78 | 24.68 |
+| Peak allocated GPU memory, GiB | 36.48 | 36.48 | 33.85 |
+
+Code optimizations alone reduced complete generation time by **14.05%** and
+increased throughput by **16.35%**. FP8 then reduced time by **18.03%** relative
+to optimized BF16 and increased throughput by **22.00%**. The directly measured
+total, published main to optimized FP8, is **29.55% less time** (79.34 ms/chunk)
+and **41.94% higher throughput**. These are measured on one GPU; no multiplication
+of H100 and RTX gains is involved.
+
+Median server RGB readiness advanced by **123.87 ms** from code optimizations,
+then **26.99 ms** from FP8, for **150.86 ms** total. Readiness ends at prepared
+host RGB and excludes deferred refresh; completed generation includes refresh
+and RGB preparation. Neither includes network delivery, browser presentation or
+display response. That generation experiment did not measure control-to-browser
+latency; the separate interactive comparison below does. Physical display latency
+and the standard RTX PRO 6000 remain untested.
+
+All six processes passed finite-output, reset, scene-return and pending-reset
+checks. Optimized variants also passed the raw-token check; this check is not
+applicable to the older production API, which lacks `decode=False`. Both repeats
+of each variant reproduced all 512 moving-frame hashes exactly and had identical
+first-64 moving and 64 held-control raw arrays. Optimized BF16 and FP8 also
+reproduced their earlier per-precision reference rollouts exactly. This establishes
+repeatability within each variant, not visual equivalence between variants.
+
+Quality coverage is still one scene and seed. A three-way preview retains all
+512 frames, downscaled and played at 30 fps; the saved full-resolution sources
+use the configured 10 fps timeline. Spot checks at frames 0/63/127/255/383/511
+show recognizable anatomy in all three, with differences in instrument position
+and tissue texture. These samples do not establish temporal or control-response
+equivalence, or broader visual quality acceptance.
+
+The final run reused frozen, per-variant compiler caches. An earlier attempt
+(`production-matrix-c0adc482`) used fresh caches and stopped when optimized BF16
+differed from the earlier reference starting at frame zero, despite identical
+source/configuration/input/weight identities and passing lifecycle checks.
+Reusing the earlier cache restored exact reference equality. This is evidence of
+compiler-cache-dependent numerical behavior; the particular generated kernel
+responsible was not isolated. The failed attempt is retained, no quality tolerance
+was relaxed, and startup is not presented as a cold-compile benchmark.
+
+## Native MXFP6 pilot on RTX PRO 6000D — not promoted
+
+The requested next step tested **MXFP6 E3M2 weights × MXFP8 E4M3 activations**,
+using the native C++ CUTLASS SM120 path from example 79c, pinned to CUTLASS
+v4.8.1 (`2c85f497547eb441f0fe80bfb0fb2e6f9add1719`). This was a standalone
+experiment outside product code. The current CuTe DSL blockscaled dispatcher
+rejects mixed FP6 pairs, so it was not used as an emulated substitute. Both inputs
+use power-of-two E8M0 scales over blocks of 32; output remains BF16 with FP32
+accumulation. Four FP6 values are packed into three bytes.
+
+Run `fp6-native-pilot-04` completed the real layer-0 gate and down projection
+shapes at M=580/788/1160/1848. It used original BF16 weights and synthetic BF16
+activations, not model rollout activations. Gate represents the identical up
+projection geometry; no combined MLP or full-model speedup is claimed. Input
+packing/scales were checked against independent Python decoding and rounding,
+including zero/sign/midpoint/dynamic-range cases. Each GEMM was checked against
+matrix multiplication of independently dequantized operands. All checks passed;
+relative output RMSE against that quantized oracle was below 0.000014.
+
+Weights were packed outside timing. Runtime activation conversion was included
+in complete projection timing. CUDA graphs captured 50 invocations, measured
+with GPU events over nine replays. Complete FP6 and FP8 timings were repeated in
+reverse order. The table averages the two median complete-path measurements.
+
+| Rows M | Projection geometry (N × K) | FP8 complete, µs | MXFP6 complete, µs | MXFP6 time change |
+| ---: | --- | ---: | ---: | ---: |
+| 788 | Gate/up: 12288 × 4096 | 175.94 | 177.18 | +0.70% |
+| 788 | Down: 4096 × 12288 | 265.73 | 269.39 | +1.38% |
+| 580 | Gate/up | 131.99 | 133.12 | +0.85% |
+| 580 | Down | 134.99 | 136.03 | +0.77% |
+| 1160 | Gate/up | 260.96 | 262.84 | +0.72% |
+| 1160 | Down | 273.37 | 276.39 | +1.10% |
+| 1848 | Gate/up | 356.34 | 361.04 | +1.32% |
+| 1848 | Down | 405.27 | 415.23 | +2.46% |
+
+At M=788, prepacked GEMMs were essentially tied: gate FP8/FP6 was
+175.38/175.09 µs and down was 264.21/264.57 µs. Reducing the weight bitwidth did
+not produce a meaningful compute win in this implementation; conversion added
+cost. These are warm repeated-kernel microbenchmarks, not full-model latency
+measurements or an exhaustive search of kernel schedules. The small differences
+support **no demonstrated speed benefit**, not a universal claim that FP6 can
+never be faster.
+
+A follow-up (`fp6-cold-weights-01`) addressed repeated-weight cache reuse.
+Four independent weight buffers rotated at M=788; FP6 weights alone totaled
+150 MiB and FP8 192 MiB, both exceeding the measured 96 MiB GPU L2 cache.
+All replica outputs matched exactly. In the same reversed-order graph protocol,
+gate/up-sized projections took **175.74 µs FP8 / 177.09 µs FP6** (+0.77%), and
+down projections **265.45 µs FP8 / 268.90 µs FP6** (+1.30%). This corroborates
+the absence of a speed win when weights rotate, while remaining a kernel
+experiment rather than a full-model measurement.
+
+Projection error versus BF16 was approximately 5.9% relative RMSE for MXFP6,
+compared with 3.7% for FP8 on these inputs. This is not a rollout-quality score,
+but provides no reason to accept extra precision loss without a speed benefit.
+Packed matrices plus scales occupied about 39.32 MB per tested projection,
+versus 50.35–50.38 MB for FP8; full-model FP6 VRAM was not measured.
+
+**Decision:** stop at the kernel gate. No separate full FP6 overlay was exported,
+no FP6 rollout comparison was run, and no FP6 runtime option was added. The
+user-approved third step was conditional on a successful speed pilot. Original
+BF16 and existing separate FP8 weights remain unchanged. FP8 remains the better
+measured candidate on this 6000D, pending broader quality acceptance and the
+standard RTX PRO 6000 test.
+
+The build tools were isolated from the model environment. CUDA 13.0 compilation
+first failed against Ubuntu 26.04's newer `rsqrt` declarations. CUDA 13.4.92,
+compatible with driver 615.71.09, fixed the system-header issue. Subsequent setup
+attempts added CUTLASS's constexpr flags and the pip toolkit's explicit library
+path/development symlink. Failed attempts and their logs are retained. The final
+native compiler was CUDA 13.4.92; the Python package remained PyTorch
+2.11.0+cu130. The loaded CUDA runtime was verified as 13.0 from the existing
+PyTorch environment. Both FP6 and FP8 kernel baselines ran in the same pilot process.
+No system CUDA installation or model dependency lock was changed. After the pilot,
+the original BF16 checkpoint still matched SHA256
+`3e6fce0046a6fe46c65307245df0db041c4a1828e0b3fc76708fb30e7851c97b`.
+
+The comparison plus native-build/probe scripts consumed **1,057 seconds
+(17.62 minutes)** of bounded single-workstation script wall time, including the
+failed attempts. This includes CPU compilation and excludes the separately
+recorded initial toolkit installation, source/asset staging, media preparation
+and downloads. It is neither active CUDA time nor workstation rental time. All
+seven scripts finished; no experiment remains running.
+
+## RTX PRO 6000D control-to-browser comparison — 2026-11-07
+
+Run `control-latency-phase-02` measured **browser control-state WebSocket send
+to the first corresponding decoded MJPEG image observed at browser
+requestAnimationFrame**. Both browser and server ran on Colossus loopback.
+The frame marker identifies the first chunk conditioned on that control; it does
+not establish the onset of visible surgical-tool motion. Physical keyboard or
+headset acquisition, remote network delivery and display scanout are unmeasured.
+This is a software control-to-browser result, not physical control-to-screen.
+
+The source commits and checkpoint match the generation comparison above:
+published-main snapshot `fb18792d8af680a713801dea7688919e46329810` and optimized
+`7e6801c32d1be84c8b5ce3b485df1b6c7e2052cf`, with the original BF16 checkpoint
+and, for FP8, the existing separate overlay. The identical benchmark-only
+keyboard adapter, control route, frame markers and timing hooks were applied
+outside product source. Native generation and MJPEG routes were retained.
+Optimized cases enabled compiled/deferred cache refresh, RoPE reuse, deadline
+pacing, GPU frame conversion and the dedicated inference thread.
+
+| Configuration | Median, ms | P95, ms | Mean, ms | Observed playback, fps |
+| --- | ---: | ---: | ---: | ---: |
+| Published main BF16, native presentation | 509.65 | 612.87 | 490.13 | 27.97 |
+| Optimized BF16, 170 ms generation lead | 317.30 | 446.24 | 320.61 | 29.34 |
+| Optimized FP8, same 170 ms lead | 302.55 | 451.43 | 317.34 | 29.32 |
+| Optimized FP8, retuned 140 ms lead | 291.50 | 422.24 | 288.78 | 29.29 |
+
+All cases retained eight output frames, two denoising steps and a 30 fps
+presentation target. Code and scheduling improvements reduced median latency
+by **192.35 ms (37.74%)**. FP8 plus retuning reduced it by a further **25.80 ms
+(8.13%)** relative to optimized BF16. The directly measured total was
+**218.15 ms (42.80%) lower median** and **190.63 ms (31.10%) lower P95** than
+published main. These reductions are separate from the earlier **29.55% lower
+complete-generation time / 41.94% higher generation throughput** result.
+Playback FPS here measures a paced browser stream, not maximum generation speed.
+
+FP8 at the same lead produced only a **3.27 ms mean** improvement and a
+**5.19 ms worse P95**, despite its 14.75 ms lower pooled median. The distributions
+largely overlap. The diagnostic means explain why: about 22 ms saved before RGB
+readiness became about 22 ms more waiting before publication. Reducing FP8's lead
+to 140 ms lets it capture newer controls; versus FP8 at 170 ms it reduced mean
+latency by **28.57 ms** and P95 by **29.19 ms** (pooled median: 11.05 ms).
+Faster generation alone does not guarantee an equal browser-latency reduction.
+
+| Mean stage, ms | Main BF16 | Optimized BF16 | FP8, 170 ms | FP8, 140 ms |
+| --- | ---: | ---: | ---: | ---: |
+| Server receipt to action capture | 152.71 | 130.93 | 127.45 | 128.11 |
+| Action capture to prepared host RGB | 284.02 | 149.60 | 127.27 | 122.10 |
+| RGB to observed frame's server publication | 5.05 | 25.78 | 48.04 | 23.90 |
+| Transport/browser/receipt residual | 48.35 | 14.30 | 14.58 | 14.68 |
+
+Primary latency uses one browser clock. Stage durations use the server's
+monotonic clock; the residual subtracts those durations from total client time.
+Publication timestamps come from an async condition observer, so fine-grained
+stage values are diagnostic. Marker overhead was retained in measured latency:
+per-trial median stamping costs were about 0.86–2.14 ms per chunk; browser canvas
+read medians were 0.2–0.3 ms. Loopback HTTP ping medians were 1.0–1.45 ms.
+
+The matrix ran production / BF16 / FP8-fixed / FP8-tuned / FP8-tuned / FP8-fixed /
+BF16 / production in fresh processes. Each used a 75-second input schedule after
+the browser's first decoded frame, plus a 1.5-second observation drain, with
+seconds 15–70 measured. A frozen irregular
+schedule (seed 20261108, actual intervals 0.529–1.002 seconds) supplied both
+presses and releases with a 100 ms heartbeat. There were **71 measured changes
+per trial, 142 per configuration and 568 total**. Every measured control was
+received, consumed and observed, always starting at frame zero of its chunk.
+Actual input timing deviated from the plan by at most 5.11 ms. Fake tests of
+both source paths, stage-accounting checks, source/config/device identity gates,
+and verification of all nine staged input hashes passed.
+
+No measured browser frame IDs were missed; native publication IDs were also
+continuous. No observed frame gap exceeded 100 ms. Maximum gaps were
+69.5 / 53.5 / 54.1 / 54.4 ms respectively. This supports continuity on the tested
+path, not perfectly even 30 fps presentation or perceptual smoothness equivalence.
+
+Individual trial medians were 472.2/522.4 ms for main, 303.8/338.0 for optimized
+BF16, 300.8/304.3 for fixed-lead FP8, and 290.1/296.8 for retuned FP8. Input phase
+and finite sampling still affect pooled statistics. An earlier complete pass,
+`control-latency-01`, used one-second input changes (110 measured changes per
+configuration). Its pooled medians were 479.75 / 346.80 / 309.30 / 323.40 ms,
+with no missed controls or frames. That pass exposed phase alignment with the
+eight-frame cycle and is retained as diagnostic evidence; the irregular schedule
+was prepared before the follow-up results were known. Do not treat 42.80% as a
+universal hardware or input-schedule guarantee.
+
+Both passes used one RTX PRO **6000D** Blackwell Workstation Edition, UUID
+`9d1c580b-1874-c314-2748-e09ad31f4825`, driver 615.71.09, Python 3.12.16,
+PyTorch 2.11.0+cu130, CUDA 13.0 and cuDNN 91900. Playwright 1.64.1 launched
+headless Chromium 156.0.8078.4 with GPU rendering disabled. Browser tools were
+isolated from the model environment. The common Transformers PIL image-processor
+fallback warning is retained in all logs; it was not an FP8 kernel fallback.
+Validated per-precision compiler caches were reused. Observed initialization
+was about 17 seconds for BF16 and 41 seconds for FP8; these are not cold-start
+measurements. All trials used seed 11, the same example scene/prompt, 832×480,
+TAEHV, four CPU threads and the original 10 Hz model conditioning.
+
+Coverage remains one scene/seed on one GPU. The same wall-time control schedule
+can yield different action trajectories when capture timing differs; this test
+does not establish rollout-quality or semantic control-response equivalence.
+The 170/140 ms leads are experimental measured settings for this stack, not new
+defaults. The standard RTX PRO 6000, physical display/headset latency and the
+raw-token/browser-decoder path remain unmeasured here. FP8 remains default-off
+pending broader quality acceptance.
+
+Both runs finished (932 and 930 seconds; **1,862 seconds / 31.03 minutes** of
+single-workstation script wall time including initialization, fake checks,
+warmup and analysis). This excludes browser installation, artifact preparation
+and transfer; it is neither active CUDA time nor workstation rental time. The
+GPU lock was released and no compute process remained. The original checkpoint
+SHA256 was rechecked unchanged after completion. No runtime source, original
+weights, shared framework or model dependencies were changed by this experiment.
+
+Reproduction commands, immutable protocols, raw client/server traces, individual
+results and accounting are saved in the two run directories under
+`/localhome/local-shuver/dreams-fp8-20261107/runs/`, and copied to workspace
+`outputs/colossus-control-latency-20261107/{fixed-periodic,phase-varied}/`.
+The latter includes the CDF/stage plot, audit and summary. The phase-varied
+evidence archive SHA256 is
+`1c4253f2622ecea08a799dfb03b021ed5c80692631683901e627baf0e7e5cf9d`;
+the periodic archive is
+`01b0005d4a61248372cb72d0c2d01a2392b785902f1470b73757b493284a2042`.
+These artifacts contain no checkpoint or FP8 weight files.

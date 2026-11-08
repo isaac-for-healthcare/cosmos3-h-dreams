@@ -51,6 +51,7 @@ def main() -> None:
     parser.add_argument("--defer-cache-refresh", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--fp8-weights", type=Path)
+    parser.add_argument("--nvfp4-weights", type=Path)
     parser.add_argument("--initial-frame", type=Path, default=Path("assets/example_data/scenes/example_frame.png"))
     parser.add_argument("--actions", type=Path, default=Path("assets/example_data/scenes/trajectory.npy"))
     parser.add_argument("--decoder", choices=("wan", "taehv", "taehv2super"), default="taehv")
@@ -85,7 +86,8 @@ def main() -> None:
         "compile_cache_refresh": args.mode == "compiled",
         "reuse_cache_rope": args.reuse_cache_rope,
         "defer_cache_refresh": args.defer_cache_refresh, "profile": args.profile_stages,
-        "fp8_weights": args.fp8_weights, "decoder": args.decoder,
+        "fp8_weights": args.fp8_weights, "nvfp4_weights": args.nvfp4_weights,
+        "decoder": args.decoder,
     })
     session = Cosmos3HDreamsSession(config=config)
     converter = MjpegFrames(gpu_frame_conversion=True)
@@ -175,7 +177,7 @@ def main() -> None:
                                    for p in (50, 90, 95)}
         report["frame_readiness_ms"] = report["generation_ms"]
         (args.output / "timing.json").write_text(json.dumps(report, default=str, indent=2))
-        print(json.dumps({"phase": "timed", "precision": "fp8" if args.fp8_weights else "bf16",
+        print(json.dumps({"phase": "timed", "precision": "nvfp4" if args.nvfp4_weights else "fp8" if args.fp8_weights else "bf16",
                           "complete_ms_per_chunk": report["complete_ms_per_chunk"],
                           "complete_fps": report["complete_fps"],
                           "frame_readiness_ms": report["frame_readiness_ms"]}), flush=True)

@@ -78,6 +78,7 @@ class HandModel:
         reuse_cache_rope: Reuse positional factors across FadeMem layers.
         compile_cache_refresh: Experimental compiled saturated FadeMem refresh.
         fp8_weights: Experimental, separate generator-MLP FP8 overlay directory.
+        nvfp4_weights: Experimental, separate SM120 NVFP4 overlay directory.
         compile_denoise: ``torch.compile`` the velocity call.
         compile_denoise_mode: torch.compile mode for that call.
         fixed_shape_cache_fill: Use static masked history while the cache fills.
@@ -116,6 +117,7 @@ class HandModel:
         reuse_cache_rope: bool = False,
         compile_cache_refresh: bool = False,
         fp8_weights: str | Path | None = None,
+        nvfp4_weights: str | Path | None = None,
         compile_denoise: bool = False,
         compile_denoise_mode: str = "max-autotune-no-cudagraphs",
         fixed_shape_cache_fill: bool = False,
@@ -193,25 +195,32 @@ class HandModel:
         self.height = _agibot.CONTENT_HEIGHT
         self.patch = SPEC.vfm.latent_patch_size
 
+        if fp8_weights is not None and nvfp4_weights is not None:
+            raise ValueError("Choose only one of fp8_weights and nvfp4_weights")
         source = ensure_checkpoint(
             resolve_checkpoint_source(checkpoint), credential_path=credential_path
         )
         self.quantization_info = None
-        if fp8_weights is not None:
-            from cosmos3_h_dreams._runtime._fp8 import install_overlay, preflight
-            from cosmos3_h_dreams.fp8_weights import verify_overlay
-
-            fp8_weights = Path(fp8_weights)
+        overlay_path = nvfp4_weights if nvfp4_weights is not None else fp8_weights
+        if overlay_path is not None:
+            if nvfp4_weights is not None:
+                from cosmos3_h_dreams._runtime._nvfp4 import install_overlay, preflight
+                from cosmos3_h_dreams.nvfp4_weights import verify_overlay
+            else:
+                from cosmos3_h_dreams._runtime._fp8 import install_overlay, preflight
+                from cosmos3_h_dreams.fp8_weights import verify_overlay
+            overlay_path = Path(overlay_path)
             preflight(device)
-            fp8_manifest = verify_overlay(Path(source), fp8_weights)
+            overlay_manifest = verify_overlay(Path(source), overlay_path)
         self.net = load_exported_checkpoint(
             source,
             device=device,
             credential_path=resolve_credential_path(credential_path),
         ).eval()
-        if fp8_weights is not None:
-            self.quantization_info = install_overlay(self.net, fp8_weights, fp8_manifest)
-            print(f"[cosmos3-h-dreams] Experimental FP8 enabled: {self.quantization_info}", flush=True)
+        if overlay_path is not None:
+            self.quantization_info = install_overlay(self.net, overlay_path, overlay_manifest)
+            precision = "NVFP4" if nvfp4_weights is not None else "FP8"
+            print(f"[cosmos3-h-dreams] Experimental {precision} enabled: {self.quantization_info}", flush=True)
         if not getattr(self.net.config, "action_gen", False):
             raise SystemExit(
                 "checkpoint has no action pathway; the hand demo needs the AgiBot "

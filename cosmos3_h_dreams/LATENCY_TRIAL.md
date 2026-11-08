@@ -10,8 +10,11 @@ presentation while retaining **eight output frames per model step**. It builds
 on [Nishant Jain’s keyboard/token fork](https://github.com/nisjain-123/cosmos3-h-dreams/tree/f7b2821f027612d0e39c34db3fd0635bfab9a262).
 The native headset/WebXR entry point remains available.
 
-Status: **useful opt-in on the tested H100/Chromium stack**. RTX PRO 6000 is a
-validation target, not a GPU on which these numbers have been reproduced.
+Status: **useful opt-in on the tested H100/Chromium stack**. The historical
+numbers below remain H100 results. A separate
+[RTX PRO 6000D comparison](FP8_TRIAL.md#rtx-pro-6000d-control-to-browser-comparison--2026-11-07)
+now measures software control-to-browser latency with BF16 and experimental FP8.
+The standard RTX PRO 6000 and physical display latency remain untested.
 No model weights, attention/cache semantics, or shared `flashdreams/` code were
 changed by our optimization patch. The optional compiled cache refresh described
 below changes floating-point numerics and can change later rollout content and
