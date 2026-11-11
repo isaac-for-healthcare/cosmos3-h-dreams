@@ -18,7 +18,13 @@ override-dependencies = [
     "numpy>=1.24,<2.5",
     # Keep transitive HTTP clients off urllib3 versions with sensitive-header
     # redirect handling vulnerabilities.
-    "urllib3>=2.7.0",
+    "urllib3>=2.8.0",
+    # Security floors for transitive dependencies flagged by nSpect.
+    "fsspec>=2026.9.0",
+    "setuptools>=84.2.1",
+    "idna>=3.20",
+    "multidict>=6.9.1",
+    "certifi>=2026.10.23",
     # Security floors for transitive async/TLS dependencies.
     "anyio>=4.14.2",
     "cryptography>=50.0.0",

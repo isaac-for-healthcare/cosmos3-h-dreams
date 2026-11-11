@@ -14,7 +14,7 @@
 # limitations under the License.
 
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=84.2.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -28,7 +28,7 @@ dependencies = [
     "boto3>=1.35",
     "botocore>=1.35",
     "einops>=0.7",
-    "filelock>=3",
+    "filelock>=4.2.10",
     "ftfy>=6.0",
     "huggingface-hub>=0.33",
     "loguru>=0.7",
@@ -42,7 +42,7 @@ dependencies = [
     "tqdm>=4.60",
     "transformers>=5.17,<6",
     # Security floor for botocore/requests transitive use.
-    "urllib3>=2.7.0",
+    "urllib3>=2.8.0",
     # tyro powers the ``flashdreams-run`` console script (subcommand
     # union over the integration registry, per-field CLI overrides), so it
     # has to ship as a runtime dependency, not a dev-only one.
