@@ -181,8 +181,17 @@ wheel                  MIT          https://github.com/pypa/wheel
 Additional locked packages
 ================================================================================
 
-certifi 2026.4.22       MPL-2.0
+certifi 2026.10.23      MPL-2.0
     https://github.com/certifi/python-certifi/blob/master/LICENSE
+
+fsspec 2026.9.0        BSD-3-Clause
+    https://github.com/fsspec/filesystem_spec
+
+idna 3.20             BSD-3-Clause
+    https://github.com/kjd/idna
+
+multidict 6.9.1       Apache-2.0
+    https://github.com/aio-libs/multidict
 
 regendoc 0.9.0         MPL-2.0
     https://pypi.org/project/regendoc/0.9.0/
